@@ -19,6 +19,7 @@ export default function App() {
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState(null);
   const [userRole, setUserRole] = useState('Auditor'); // 'Auditor' | 'HOD' | 'Admin'
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Fetch initial bootstrap configuration
   const fetchBootstrap = async () => {
@@ -79,8 +80,6 @@ export default function App() {
       </div>
     );
   }
-
-  const [currentUser, setCurrentUser] = useState(null);
 
   const handleLogin = (user) => {
     setCurrentUser(user);
