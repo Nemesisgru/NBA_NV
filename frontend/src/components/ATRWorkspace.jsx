@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, CheckCircle, Clock, AlertTriangle, Save, RefreshCw, Filter, CheckSquare, Square, Edit3, Download, FileText } from 'lucide-react';
 
-export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, userRole }) {
+export default function ATRWorkspace({ institutes, criteriaList, departmentInfo, selectedDepartmentId, selectedCycleId, userRole }) {
   const [atrs, setAtrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -9,12 +9,23 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
   const [editingAtr, setEditingAtr] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
 
+  // Admin-only: view ATRs across all departments, narrowed by institute / criterion
+  const [scope, setScope] = useState('department'); // 'department' | 'all'
+  const [instituteFilter, setInstituteFilter] = useState('ALL');
+  const [criterionFilter, setCriterionFilter] = useState('ALL');
+  const showAll = userRole === 'Admin' && scope === 'all';
+
   const fetchAtrs = async () => {
     setLoading(true);
     try {
       let url = `/api/atr/?cycle_id=${selectedCycleId || ''}`;
-      if (selectedDepartmentId) url += `&department_id=${selectedDepartmentId}`;
-      if (statusFilter !== 'ALL') url += `&status=${statusFilter}`;
+      if (showAll) {
+        if (instituteFilter !== 'ALL') url += `&institute_code=${encodeURIComponent(instituteFilter)}`;
+        if (criterionFilter !== 'ALL') url += `&criterion_code=${encodeURIComponent(criterionFilter)}`;
+      } else if (selectedDepartmentId) {
+        url += `&department_id=${selectedDepartmentId}`;
+      }
+      if (statusFilter !== 'ALL') url += `&status=${encodeURIComponent(statusFilter)}`;
       const res = await fetch(url);
       const json = await res.json();
       setAtrs(json.atrs || []);
@@ -28,7 +39,7 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
   useEffect(() => {
     fetchAtrs();
     setSelectedIds(new Set());
-  }, [selectedDepartmentId, selectedCycleId, statusFilter]);
+  }, [selectedDepartmentId, selectedCycleId, statusFilter, showAll, instituteFilter, criterionFilter]);
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -111,6 +122,7 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {!showAll && (<>
           <a
             href={`/api/export/department-excel/?department_id=${selectedDepartmentId}&cycle_id=${selectedCycleId}`}
             download
@@ -128,6 +140,7 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
           >
             <FileText size={14} /> Print / Save PDF
           </a>
+          </>)}
           {selectedIds.size > 0 && (
             <div style={{ display: 'flex', gap: '6px' }}>
               <button 
@@ -162,6 +175,58 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
         flexWrap: 'wrap',
         gap: '12px'
       }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        {userRole === 'Admin' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Scope:</span>
+            {[
+              ['department', departmentInfo ? `${departmentInfo.institute_code} - ${departmentInfo.code}` : 'Selected department'],
+              ['all', 'All departments']
+            ].map(([key, text]) => (
+              <button
+                key={key}
+                onClick={() => setScope(key)}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: scope === key ? '#0891b2' : '#1e293b',
+                  color: scope === key ? '#fff' : '#94a3b8'
+                }}
+              >
+                {text}
+              </button>
+            ))}
+            {showAll && (
+              <>
+                <select
+                  value={instituteFilter}
+                  onChange={(e) => setInstituteFilter(e.target.value)}
+                  style={{ width: '130px', padding: '4px 8px', fontSize: '0.75rem' }}
+                >
+                  <option value="ALL">All institutes</option>
+                  {institutes.map(i => (
+                    <option key={i.code} value={i.code}>{i.code}</option>
+                  ))}
+                </select>
+                <select
+                  value={criterionFilter}
+                  onChange={(e) => setCriterionFilter(e.target.value)}
+                  style={{ width: '130px', padding: '4px 8px', fontSize: '0.75rem' }}
+                >
+                  <option value="ALL">All criteria</option>
+                  {criteriaList.map(c => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </select>
+              </>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Filter Status:</span>
           {['ALL', 'Open', 'In Progress', 'Closed'].map(st => (
@@ -182,6 +247,7 @@ export default function ATRWorkspace({ selectedDepartmentId, selectedCycleId, us
               {st}
             </button>
           ))}
+        </div>
         </div>
 
         <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>

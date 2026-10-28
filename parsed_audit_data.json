@@ -431,7 +431,7 @@
       "items": [
         {
           "row_index": 8,
-          "code": "1.1000000000000001",
+          "code": "1.1",
           "is_header": true,
           "key_aspect": "Vision, Mission and PEOs",
           "auditor_verifies": "",
@@ -2330,7 +2330,7 @@
       "items": [
         {
           "row_index": 8,
-          "code": "4.0999999999999996",
+          "code": "4.1",
           "is_header": true,
           "key_aspect": "Enrolment ratio",
           "auditor_verifies": "",
@@ -2482,7 +2482,7 @@
         },
         {
           "row_index": 16,
-          "code": "4.4000000000000004",
+          "code": "4.4",
           "is_header": true,
           "key_aspect": "Academic performance - second year",
           "auditor_verifies": "",
@@ -2596,7 +2596,7 @@
         },
         {
           "row_index": 22,
-          "code": "4.5999999999999996",
+          "code": "4.6",
           "is_header": true,
           "key_aspect": "Placement, higher studies and entrepreneurship",
           "auditor_verifies": "",
@@ -2830,7 +2830,7 @@
       "items": [
         {
           "row_index": 8,
-          "code": "5.0999999999999996",
+          "code": "5.1",
           "is_header": true,
           "key_aspect": "Student-faculty ratio",
           "auditor_verifies": "",
@@ -3893,7 +3893,7 @@
         },
         {
           "row_index": 13,
-          "code": "8.1999999999999993",
+          "code": "8.2",
           "is_header": true,
           "key_aspect": "Academic audit and actions taken",
           "auditor_verifies": "",
@@ -3950,7 +3950,7 @@
         },
         {
           "row_index": 16,
-          "code": "8.3000000000000007",
+          "code": "8.3",
           "is_header": true,
           "key_aspect": "Improvement in faculty qualification / contribution",
           "auditor_verifies": "",
@@ -4127,7 +4127,7 @@
         },
         {
           "row_index": 10,
-          "code": "9.1999999999999993",
+          "code": "9.2",
           "is_header": true,
           "key_aspect": "Mentoring system",
           "auditor_verifies": "",
@@ -4184,7 +4184,7 @@
         },
         {
           "row_index": 13,
-          "code": "9.3000000000000007",
+          "code": "9.3",
           "is_header": true,
           "key_aspect": "Feedback analysis",
           "auditor_verifies": "",
@@ -4431,7 +4431,7 @@
         },
         {
           "row_index": 26,
-          "code": "9.6999999999999993",
+          "code": "9.7",
           "is_header": true,
           "key_aspect": "Institute budget",
           "auditor_verifies": "",
@@ -4469,7 +4469,7 @@
         },
         {
           "row_index": 28,
-          "code": "9.8000000000000007",
+          "code": "9.8",
           "is_header": true,
           "key_aspect": "Programme budget",
           "auditor_verifies": "",
@@ -4545,7 +4545,7 @@
         },
         {
           "row_index": 32,
-          "code": "9.1",
+          "code": "9.10",
           "is_header": true,
           "key_aspect": "E-governance",
           "auditor_verifies": "",
@@ -4621,7 +4621,7 @@
         },
         {
           "row_index": 36,
-          "code": "9.1199999999999992",
+          "code": "9.12",
           "is_header": true,
           "key_aspect": "Innovative educational initiatives",
           "auditor_verifies": "",
@@ -4659,7 +4659,7 @@
         },
         {
           "row_index": 38,
-          "code": "9.1300000000000008",
+          "code": "9.13",
           "is_header": true,
           "key_aspect": "Faculty appraisal (FPADS)",
           "auditor_verifies": "",

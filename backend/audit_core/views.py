@@ -44,6 +44,12 @@ def auth_login_view(request):
     if not username or not password:
         return JsonResponse({'error': 'Username and password required'}, status=400)
 
+    # Allow signing in with the account email (e.g. hod.cs@krct.ac.in) as well as the username
+    if '@' in username:
+        by_email = User.objects.filter(email__iexact=username).first()
+        if by_email:
+            username = by_email.username
+
     user = authenticate(username=username, password=password)
     if not user:
         return JsonResponse({'error': 'Invalid username or password'}, status=401)
@@ -246,6 +252,12 @@ def save_evaluation(request):
     metric = MetricItem.objects.filter(id=metric_id).first()
     if not metric:
         return JsonResponse({'error': 'Metric not found'}, status=404)
+    if metric.is_header:
+        return JsonResponse({'error': f'{metric.code} is a section header and cannot be scored'}, status=400)
+    if not Department.objects.filter(id=dept_id).exists():
+        return JsonResponse({'error': 'Department not found'}, status=404)
+    if not AuditCycle.objects.filter(id=cycle_id).exists():
+        return JsonResponse({'error': 'Audit cycle not found'}, status=404)
 
     settings = get_settings()
 
@@ -257,12 +269,12 @@ def save_evaluation(request):
     is_flagged = data.get('is_flagged_for_atr', False)
 
     try:
-        items_checked = float(items_checked) if items_checked is not None and str(items_checked) != '' else None
+        items_checked = round(float(items_checked), 2) if items_checked is not None and str(items_checked) != '' else None
     except:
         items_checked = None
 
     try:
-        valid_items = float(valid_items) if valid_items is not None and str(valid_items) != '' else None
+        valid_items = round(float(valid_items), 2) if valid_items is not None and str(valid_items) != '' else None
     except:
         valid_items = None
 
@@ -569,6 +581,8 @@ def atr_list(request):
     cycle_id = request.GET.get('cycle_id')
     status = request.GET.get('status')
     grade = request.GET.get('grade')
+    institute = request.GET.get('institute_code')
+    criterion = request.GET.get('criterion_code')
 
     query = ActionTakenReport.objects.select_related(
         'evaluation__department', 'evaluation__metric__criterion', 'evaluation__cycle'
@@ -582,9 +596,14 @@ def atr_list(request):
         query = query.filter(status=status)
     if grade:
         query = query.filter(evaluation__grade=grade)
+    if institute:
+        query = query.filter(evaluation__department__institute__code=institute)
+    if criterion:
+        query = query.filter(evaluation__metric__criterion__code=criterion)
 
     atrs = []
-    for item in query.order_by('evaluation__metric__criterion__order', 'evaluation__metric__order'):
+    for item in query.order_by('evaluation__department__institute__code', 'evaluation__department__code',
+                               'evaluation__metric__criterion__order', 'evaluation__metric__order'):
         ev = item.evaluation
         atrs.append({
             'atr_id': item.id,
@@ -712,12 +731,19 @@ def save_assignment(request):
     a1 = Auditor.objects.filter(id=a1_id).first() if a1_id else None
     a2 = Auditor.objects.filter(id=a2_id).first() if a2_id else None
 
-    # Deployment rule verification
+    if not dept:
+        return JsonResponse({'error': 'Department not found'}, status=404)
+
+    # Deployment rule: auditors must not audit departments of their own college
+    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if aud and aud.institute_id == dept.institute_id:
+            return JsonResponse({
+                'error': f"{label} ({aud.name}) belongs to {dept.institute.code} and cannot audit a {dept.institute.code} department."
+            }, status=400)
+    if a1 and a2 and a1.id == a2.id:
+        return JsonResponse({'error': 'Auditor 1 and Auditor 2 must be different people.'}, status=400)
+
     check_msg = "Deployment verified"
-    if a1 and a1.dept_name == dept.code and a1.institute == dept.institute:
-        check_msg = "Warning: Auditor 1 belongs to the same department!"
-    elif a2 and a2.dept_name == dept.code and a2.institute == dept.institute:
-        check_msg = "Warning: Auditor 2 belongs to the same department!"
 
     combined_criteria = sorted(list(set(a1_criteria + a2_criteria)))
 

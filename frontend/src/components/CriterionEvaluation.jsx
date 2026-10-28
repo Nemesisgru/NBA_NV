@@ -4,6 +4,19 @@ import {
   ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2 
 } from 'lucide-react';
 
+// Round to at most two decimal places for display (trailing zeros dropped)
+const fmt2 = (v) => {
+  const n = parseFloat(v);
+  return isNaN(n) ? v : Math.round(n * 100) / 100;
+};
+
+// Restrict typed numeric input to at most two decimal places
+const limit2 = (v) => {
+  const s = String(v);
+  const dot = s.indexOf('.');
+  return dot === -1 ? s : s.slice(0, dot + 3);
+};
+
 export default function CriterionEvaluation({
   criteriaList,
   activeCriterionCode,
@@ -66,6 +79,7 @@ export default function CriterionEvaluation({
       if (m.id !== metricId) return m;
 
       const evalData = { ...(m.evaluation || {}) };
+      if (field === 'items_checked' || field === 'valid_items') value = limit2(value);
       evalData[field] = value;
 
       const itemsChecked = parseFloat(evalData.items_checked);
@@ -80,16 +94,16 @@ export default function CriterionEvaluation({
 
       if (!isNaN(validItems) && !isNaN(itemsChecked) && itemsChecked > 0) {
         if (m.unit === '%') {
-          valValue = Math.round((validItems / itemsChecked) * 1000) / 10;
+          valValue = Math.round((validItems / itemsChecked) * 10000) / 100;
         } else {
-          valValue = validItems;
+          valValue = Math.round(validItems * 100) / 100;
         }
       }
 
       if (valValue !== null) {
         const ratio = Math.min(valValue / (benchmark || 100), 1.0);
         marksObt = Math.round(maxMarks * ratio * 100) / 100;
-        pct = maxMarks > 0 ? Math.round((marksObt / maxMarks) * 1000) / 10 : 100;
+        pct = maxMarks > 0 ? Math.round((marksObt / maxMarks) * 10000) / 100 : 100;
 
         if (pct > 75) grade = 'Y';
         else if (pct >= 60) grade = 'C';
@@ -110,7 +124,7 @@ export default function CriterionEvaluation({
     }));
 
     // Trigger save
-    debouncedSave(metricId, field, value);
+    debouncedSave(metricId, field, (field === 'items_checked' || field === 'valid_items') ? limit2(value) : value);
   };
 
   // Auto save to Django backend
@@ -216,7 +230,7 @@ export default function CriterionEvaluation({
       }
     });
 
-    const pct = max > 0 ? Math.round((obt / max) * 1000) / 10 : 0;
+    const pct = max > 0 ? Math.round((obt / max) * 10000) / 100 : 0;
     let grade = '-';
     if (evaluableMetrics.length - unscored > 0) {
       if (pct > 75) grade = 'Y';
@@ -225,12 +239,12 @@ export default function CriterionEvaluation({
       else grade = 'D';
     }
 
-    return { max: Math.round(max * 10) / 10, obt: Math.round(obt * 100) / 100, pct, grade, y, c, w, d, unscored };
+    return { max: Math.round(max * 100) / 100, obt: Math.round(obt * 100) / 100, pct, grade, y, c, w, d, unscored };
   }, [evaluableMetrics]);
 
   // Filter metrics
   const filteredMetrics = useMemo(() => {
-    return metrics.filter(m => {
+    const rows = metrics.filter(m => {
       if (m.is_header) return true; // Keep headers for grouping
       const ev = m.evaluation || {};
       const matchesSearch = 
@@ -247,6 +261,8 @@ export default function CriterionEvaluation({
 
       return matchesSearch && matchesGrade && matchesATR;
     });
+    // Drop section headers left with no matching metric rows under them
+    return rows.filter((m, i) => !m.is_header || (rows[i + 1] && !rows[i + 1].is_header));
   }, [metrics, searchQuery, gradeFilter, onlyFlagged]);
 
   return (
@@ -294,7 +310,7 @@ export default function CriterionEvaluation({
                 {c.code}
               </span>
               <span>{c.title}</span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({c.max_marks}M)</span>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({fmt2(c.max_marks)}M)</span>
             </button>
           );
         })}
@@ -583,7 +599,7 @@ export default function CriterionEvaluation({
                             {item.code} — {item.key_aspect}
                           </span>
                           <span style={{ fontSize: '0.8rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>
-                            Sub-Total: {item.max_marks} Marks
+                            Sub-Total: {fmt2(item.max_marks)} Marks
                           </span>
                         </div>
                       </td>
@@ -657,7 +673,7 @@ export default function CriterionEvaluation({
 
                     {/* Max Marks */}
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#e2e8f0' }}>
-                      {item.max_marks}
+                      {fmt2(item.max_marks)}
                     </td>
 
                     {/* Auditor Inputs */}
@@ -667,7 +683,7 @@ export default function CriterionEvaluation({
                           <input
                             type="number"
                             min="0"
-                            step="any"
+                            step="0.01"
                             value={ev.items_checked !== null && ev.items_checked !== undefined ? ev.items_checked : ''}
                             onChange={(e) => handleInputChange(item.id, 'items_checked', e.target.value)}
                             disabled={userRole === 'HOD'}
@@ -685,7 +701,7 @@ export default function CriterionEvaluation({
                           <input
                             type="number"
                             min="0"
-                            step="any"
+                            step="0.01"
                             value={ev.valid_items !== null && ev.valid_items !== undefined ? ev.valid_items : ''}
                             onChange={(e) => handleInputChange(item.id, 'valid_items', e.target.value)}
                             disabled={userRole === 'HOD'}
@@ -700,10 +716,10 @@ export default function CriterionEvaluation({
                           />
                         </td>
                         <td style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>
-                          {item.benchmark} {item.unit}
+                          {fmt2(item.benchmark)} {item.unit}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: '#38bdf8' }}>
-                          {ev.validated_value !== null && ev.validated_value !== undefined ? `${ev.validated_value} ${item.unit}` : '-'}
+                          {ev.validated_value !== null && ev.validated_value !== undefined ? `${fmt2(ev.validated_value)} ${item.unit}` : '-'}
                         </td>
                       </>
                     )}
@@ -712,10 +728,10 @@ export default function CriterionEvaluation({
                     {visibleColumns.results && (
                       <>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>
-                          {ev.marks_obtained !== null && ev.marks_obtained !== undefined ? ev.marks_obtained : '-'}
+                          {ev.marks_obtained !== null && ev.marks_obtained !== undefined ? fmt2(ev.marks_obtained) : '-'}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: '#cbd5e1' }}>
-                          {ev.percentage !== null && ev.percentage !== undefined ? `${ev.percentage}%` : '-'}
+                          {ev.percentage !== null && ev.percentage !== undefined ? `${fmt2(ev.percentage)}%` : '-'}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {ev.grade ? (

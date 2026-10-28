@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, CheckSquare, Square, RefreshCw, GitCompare, Award, TrendingUp, Layers } from 'lucide-react';
 
+const MAX_COMPARE = 10;
+// Ten distinguishable series colours for the dark theme
+const palette = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#a855f7', '#ef4444', '#84cc16', '#38bdf8', '#f97316'];
+
 export default function ComparisonPage({ departments, selectedCycleId, criteriaList }) {
   const [selectedDeptIds, setSelectedDeptIds] = useState([]);
   const [data, setData] = useState(null);
@@ -46,8 +50,8 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
         if (prev.length === 1) return prev; // keep at least 1
         return prev.filter(id => id !== deptId);
       } else {
-        if (prev.length >= 5) {
-          alert("You can compare up to 5 departments simultaneously.");
+        if (prev.length >= MAX_COMPARE) {
+          alert(`You can compare up to ${MAX_COMPARE} departments simultaneously.`);
           return prev;
         }
         return [...prev, deptId];
@@ -55,9 +59,13 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
     });
   };
 
-  const comparedDepts = data?.departments || [];
+  // Keep departments in the order they were picked, so each keeps its pill colour
+  const comparedDepts = (data?.departments || [])
+    .filter(d => selectedDeptIds.includes(d.department_id))
+    .sort((a, b) => selectedDeptIds.indexOf(a.department_id) - selectedDeptIds.indexOf(b.department_id));
+  const colorOf = (deptId) => palette[selectedDeptIds.indexOf(deptId) % palette.length];
   const criteria = data?.criteria || [];
-  const palette = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899'];
+  const n = Math.max(comparedDepts.length, 1);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -103,8 +111,15 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
         flexDirection: 'column',
         gap: '10px'
       }}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-          SELECT DEPARTMENTS TO COMPARE (MAX 5):
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
+            SELECT DEPARTMENTS TO COMPARE (MAX {MAX_COMPARE}): <span style={{ color: '#a5b4fc' }}>{selectedDeptIds.length} / {MAX_COMPARE} selected</span>
+          </div>
+          {selectedDeptIds.length > 1 && (
+            <button onClick={() => setSelectedDeptIds(selectedDeptIds.slice(0, 1))} className="btn btn-outline btn-sm">
+              Clear selection
+            </button>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {departments.map((d, idx) => {
@@ -147,11 +162,11 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
       {/* Side-by-Side KPI Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${Math.max(comparedDepts.length, 1)}, minmax(220px, 1fr))`,
-        gap: '16px'
+        gridTemplateColumns: `repeat(auto-fill, minmax(${n > 5 ? 190 : 220}px, 1fr))`,
+        gap: n > 5 ? '12px' : '16px'
       }}>
-        {comparedDepts.map((d, idx) => {
-          const color = palette[idx % palette.length];
+        {comparedDepts.map(d => {
+          const color = colorOf(d.department_id);
           return (
             <div
               key={d.department_id}
@@ -168,7 +183,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: color }} />
               
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#f8fafc' }}>
+                <span style={{ fontWeight: 800, fontSize: n > 5 ? '0.95rem' : '1.1rem', color: '#f8fafc' }}>
                   {d.label}
                 </span>
                 <span className={`badge badge-${(d.overall_grade || 'd').toLowerCase()}`}>
@@ -177,7 +192,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
               </div>
 
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', margin: '10px 0' }}>
-                <span style={{ fontSize: '2rem', fontWeight: 800, color: color }}>
+                <span style={{ fontSize: n > 5 ? '1.6rem' : '2rem', fontWeight: 800, color: color }}>
                   {d.overall_pct}%
                 </span>
                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Overall Score</span>
@@ -225,7 +240,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
         padding: '20px',
         boxShadow: 'var(--shadow-card)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
           <div>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
               Criterion-by-Criterion Score Comparison (%)
@@ -235,10 +250,10 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {comparedDepts.map((d, idx) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px 14px', flexWrap: 'wrap', maxWidth: '720px' }}>
+            {comparedDepts.map(d => (
               <div key={d.department_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: palette[idx % palette.length] }} />
+                <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: colorOf(d.department_id) }} />
                 <span style={{ color: '#cbd5e1' }}>{d.label}</span>
               </div>
             ))}
@@ -247,14 +262,15 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
 
         {/* Custom Responsive SVG Chart */}
         <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '10px' }}>
-          <div style={{ minWidth: '700px', height: '240px', display: 'flex', alignItems: 'flex-end', gap: '16px', borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
+          {/* Each criterion group gets ~14px per bar so 10 departments stay readable; scrolls on narrow screens */}
+          <div style={{ minWidth: `${Math.max(700, criteria.length * (n * 14 + 20))}px`, height: '260px', display: 'flex', alignItems: 'flex-end', gap: n > 5 ? '10px' : '16px', borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
             {criteria.map((c, cIdx) => (
               <div key={c.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '4px', height: '180px' }}>
-                  {comparedDepts.map((d, dIdx) => {
+                <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: n > 5 ? '2px' : '4px', height: '200px' }}>
+                  {comparedDepts.map(d => {
                     const score = d.scores[cIdx] || 0;
                     const heightPct = Math.min(score, 100);
-                    const color = palette[dIdx % palette.length];
+                    const color = colorOf(d.department_id);
                     return (
                       <div
                         key={d.department_id}
@@ -300,9 +316,9 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
             <thead>
               <tr>
                 <th style={{ width: '80px' }}>Criterion</th>
-                <th style={{ minWidth: '220px' }}>Title</th>
-                {comparedDepts.map((d, idx) => (
-                  <th key={d.department_id} style={{ textAlign: 'center', color: palette[idx % palette.length] }}>
+                <th style={{ minWidth: n > 5 ? '170px' : '220px' }}>Title</th>
+                {comparedDepts.map(d => (
+                  <th key={d.department_id} style={{ textAlign: 'center', whiteSpace: 'nowrap', color: colorOf(d.department_id) }}>
                     {d.label} (%)
                   </th>
                 ))}
@@ -317,7 +333,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                     const score = d.scores[cIdx] || 0;
                     const grade = score > 75 ? 'Y' : (score >= 60 ? 'C' : (score >= 40 ? 'W' : 'D'));
                     return (
-                      <td key={d.department_id} style={{ textAlign: 'center' }}>
+                      <td key={d.department_id} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 700, marginRight: '6px' }}>{score}%</span>
                         <span className={`badge badge-${grade.toLowerCase()}`} style={{ fontSize: '0.7rem', padding: '1px 6px' }}>
                           {grade}

@@ -19,6 +19,7 @@ export default function AdminAllocation({
   const [loading, setLoading] = useState(true);
   const [searchAuditor, setSearchAuditor] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
+  const [saveIsError, setSaveIsError] = useState(false);
 
   // Modals
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
@@ -88,6 +89,8 @@ export default function AdminAllocation({
   // Save assignment to backend with individual criteria for each auditor
   const saveAssignmentRow = async (assignment) => {
     setSaveStatus('Saving assignment...');
+    setSaveIsError(false);
+    let failed = false;
     try {
       const payload = {
         department_id: assignment.department_id,
@@ -108,11 +111,16 @@ export default function AdminAllocation({
       if (json.status === 'success') {
         setSaveStatus('Assignment updated successfully!');
         await fetchAssignments();
+      } else {
+        failed = true;
+        setSaveStatus(json.error || 'Failed to save assignment');
       }
     } catch (err) {
+      failed = true;
       setSaveStatus('Failed to save assignment');
     } finally {
-      setTimeout(() => setSaveStatus(''), 2000);
+      setSaveIsError(failed);
+      setTimeout(() => setSaveStatus(''), failed ? 6000 : 2000);
     }
   };
 
@@ -301,7 +309,7 @@ export default function AdminAllocation({
             <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
               💡 <strong>Individual Criteria Assignment</strong>: Click criterion chips under each auditor to assign specific criteria (e.g. C1-C3 to Auditor 1, C4-C9 to Auditor 2).
             </span>
-            {saveStatus && <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700 }}>{saveStatus}</span>}
+            {saveStatus && <span style={{ fontSize: '0.75rem', color: saveIsError ? '#ef4444' : '#10b981', fontWeight: 700 }}>{saveStatus}</span>}
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -340,11 +348,13 @@ export default function AdminAllocation({
                           style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
                         >
                           <option value="">-- Unassigned --</option>
-                          {auditors.map(a => (
-                            <option key={a.id} value={a.id}>
-                              {a.name} ({a.institute_code} - {a.dept_name})
-                            </option>
-                          ))}
+                          {auditors
+                            .filter(a => a.institute_code !== row.institute_code || a.id === row.auditor_1?.id)
+                            .map(a => (
+                              <option key={a.id} value={a.id}>
+                                {a.name} ({a.institute_code} - {a.dept_name})
+                              </option>
+                            ))}
                         </select>
 
                         {/* Auditor 1 individual criteria picker */}
@@ -400,11 +410,13 @@ export default function AdminAllocation({
                           style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
                         >
                           <option value="">-- Unassigned --</option>
-                          {auditors.map(a => (
-                            <option key={a.id} value={a.id}>
-                              {a.name} ({a.institute_code} - {a.dept_name})
-                            </option>
-                          ))}
+                          {auditors
+                            .filter(a => a.institute_code !== row.institute_code || a.id === row.auditor_2?.id)
+                            .map(a => (
+                              <option key={a.id} value={a.id}>
+                                {a.name} ({a.institute_code} - {a.dept_name})
+                              </option>
+                            ))}
                         </select>
 
                         {/* Auditor 2 individual criteria picker */}

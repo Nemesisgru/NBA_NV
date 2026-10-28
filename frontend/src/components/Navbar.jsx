@@ -303,12 +303,12 @@ export default function Navbar({
             <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                  Username
+                  Email or Username
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. auditor.oorkalan or hod.krct.cse or admin"
+                  placeholder="e.g. hod.cs@krct.ac.in, auditor.oorkalan or admin"
                   value={loginForm.username}
                   onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
                 />

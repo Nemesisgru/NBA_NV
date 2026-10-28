@@ -47,16 +47,8 @@ The application includes a role-based authentication and context management syst
 
 ### 2. Head of Department (HOD) Logins
 Separate user accounts and passwords are automatically generated for every department across all 3 institutes (**36 departments**).
-- **Username Format**: `hod.<institute_code>.<dept_code>` (all lowercase)
-- **Password Format**: `Hod@<DeptCode>2025#`
-- **Examples**:
-  | Institute | Department | HOD Username | Generated Password |
-  |-----------|------------|--------------|--------------------|
-  | KRCT | Computer Science & Engg (CSE) | `hod.krct.cse` | `Hod@CSE2025#` |
-  | KRCT | Electronics & Comm Engg (ECE) | `hod.krct.ece` | `Hod@ECE2025#` |
-  | KRCT | Mechanical Engineering (MECH) | `hod.krct.mech` | `Hod@MECH2025#` |
-  | KRCE | Artificial Intelligence & DS | `hod.krce.aids` | `Hod@AI&DS2025#` |
-  | MKCE | Electrical & Electronics (EEE) | `hod.mkce.eee` | `Hod@EEE2025#` |
+- **Login**: department email `hod.<dept>@<college>.ac.in` (e.g. `hod.cs@krct.ac.in`, `hod.ce@mkce.ac.in`) or username `hod.<institute_code>.<dept_code>`
+- **Passwords**: random temporary passwords, issued separately in `login.md` (git-ignored, not committed)
 
 *When an HOD logs in, the portal automatically locks to their department, allowing them to review auditor remarks, inspect all indicators scored below 60%, enter Root Cause Analysis and Action Plans, and download their department report.*
 

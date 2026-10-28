@@ -6,6 +6,7 @@ import KRGIDashboard from './components/KRGIDashboard';
 import ATRWorkspace from './components/ATRWorkspace';
 import AdminAllocation from './components/AdminAllocation';
 import ComparisonPage from './components/ComparisonPage';
+import CycleFilterBar from './components/CycleFilterBar';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -106,6 +107,15 @@ export default function App() {
 
   const currentDept = bootstrap.departments.find(d => d.id === selectedDepartment);
 
+  // Tabs that show the year/cycle filter bar (synced with the ribbon cycle picker)
+  const cycleFilterTabs = {
+    criteria: 'criteria evaluation',
+    summary: 'criterion summary',
+    dashboard: 'KRGI dashboard',
+    atr: 'action taken reports',
+    allocations: 'auditor allocations'
+  };
+
   const handleDepartmentAdded = (newDept) => {
     setBootstrap(prev => ({
       ...prev,
@@ -182,6 +192,15 @@ export default function App() {
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '24px', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
+        {cycleFilterTabs[activeTab] && (
+          <CycleFilterBar
+            cycles={bootstrap.cycles}
+            selectedCycle={selectedCycle}
+            setSelectedCycle={setSelectedCycle}
+            tabLabel={cycleFilterTabs[activeTab]}
+          />
+        )}
+
         {activeTab === 'criteria' && (
           <CriterionEvaluation
             criteriaList={bootstrap.criteria}
@@ -219,6 +238,9 @@ export default function App() {
 
         {activeTab === 'atr' && (
           <ATRWorkspace
+            institutes={bootstrap.institutes}
+            criteriaList={bootstrap.criteria}
+            departmentInfo={currentDept}
             selectedDepartmentId={selectedDepartment}
             selectedCycleId={selectedCycle}
             userRole={userRole}
