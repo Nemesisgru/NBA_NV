@@ -1,3 +1,4 @@
+import re
 import os
 import json
 from django.core.management.base import BaseCommand
@@ -146,12 +147,15 @@ class Command(BaseCommand):
                 except:
                     bench = 100.0
 
+                # "CRITERION N TOTAL" rows in the Excel sheet are subtotals, not scorable indicators
+                is_total_row = bool(re.match(r'^\s*CRITERION\s+\d+\s+TOTAL', item.get('key_aspect', ''), re.I))
+
                 MetricItem.objects.get_or_create(
                     criterion=crit,
                     code=item.get('code'),
                     order=metric_order,
                     defaults={
-                        'is_header': item.get('is_header', False),
+                        'is_header': item.get('is_header', False) or is_total_row,
                         'key_aspect': item.get('key_aspect', ''),
                         'auditor_verifies': item.get('auditor_verifies', ''),
                         'valid_condition': item.get('valid_condition', ''),
