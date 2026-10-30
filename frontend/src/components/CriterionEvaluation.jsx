@@ -10,6 +10,9 @@ const fmt2 = (v) => {
   return isNaN(n) ? v : Math.round(n * 100) / 100;
 };
 
+// Roles that get the search / grade filter / column toggle toolbar (administrative tool)
+const TOOLBAR_ROLES = ['Admin'];
+
 // Restrict typed numeric input to at most two decimal places
 const limit2 = (v) => {
   const s = String(v);
@@ -33,6 +36,7 @@ export default function CriterionEvaluation({
   // Set by the backend: Admin, or the auditor allocated this criterion; HODs always view-only
   const [canEdit, setCanEdit] = useState(false);
   const readOnly = !canEdit;
+  const showToolbar = TOOLBAR_ROLES.includes(userRole);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState('ALL');
@@ -402,7 +406,15 @@ export default function CriterionEvaluation({
         </div>
       )}
 
+      {/* Auditors still need save feedback when the admin toolbar is hidden */}
+      {!showToolbar && lastSavedTime && (
+        <span style={{ fontSize: '0.725rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', alignSelf: 'flex-end' }}>
+          <CheckCircle2 size={13} /> Saved at {lastSavedTime}
+        </span>
+      )}
+
       {/* Action Toolbar */}
+      {showToolbar && (
       <div style={{
         background: '#111827',
         border: '1px solid #1e293b',
@@ -541,6 +553,7 @@ export default function CriterionEvaluation({
           )}
         </div>
       </div>
+      )}
 
       {/* Main Rubrics & Evaluation Data Table */}
       <div style={{
@@ -554,15 +567,17 @@ export default function CriterionEvaluation({
           <table className="audit-table">
             <thead>
               <tr>
-                <th style={{ width: '40px', textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedRowIds.size > 0 && selectedRowIds.size === evaluableMetrics.length}
-                    onChange={toggleSelectAll}
-                    disabled={readOnly}
-                    title="Select all rows"
-                  />
-                </th>
+                {showToolbar && (
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.size > 0 && selectedRowIds.size === evaluableMetrics.length}
+                      onChange={toggleSelectAll}
+                      disabled={readOnly}
+                      title="Select all rows"
+                    />
+                  </th>
+                )}
                 <th style={{ width: '70px' }}>Code</th>
                 <th style={{ minWidth: '220px' }}>Key Aspect & Indicator</th>
                 
@@ -647,15 +662,17 @@ export default function CriterionEvaluation({
                     className={isSelected ? 'selected' : ''}
                     style={{ background: isSaving ? 'rgba(99, 102, 241, 0.05)' : undefined }}
                   >
-                    {/* Row Select Checkbox */}
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleRowSelect(item.id)}
-                        disabled={readOnly}
-                      />
-                    </td>
+                    {/* Row Select Checkbox (bulk actions live in the admin toolbar) */}
+                    {showToolbar && (
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRowSelect(item.id)}
+                          disabled={readOnly}
+                        />
+                      </td>
+                    )}
 
                     {/* Metric Code */}
                     <td style={{ fontWeight: 700, color: '#a5b4fc' }}>

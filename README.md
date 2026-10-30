@@ -136,6 +136,8 @@ Whenever an auditor enters evaluation items and the calculated score is **below 
 ---
 
 ### 3. Rows & Columns Checkboxes
+*Admin only.* The evaluation toolbar (search, grade filter, "Flagged for ATR only", Columns Checkbox, refresh) and the row selection checkboxes are an administrative tool and are hidden for HODs and Auditors. Which roles get it is set by `TOOLBAR_ROLES` in `frontend/src/components/CriterionEvaluation.jsx`.
+
 - **Column Visibility Checkboxes**: Use the **"Columns Checkbox"** menu on the evaluation screen to toggle display of:
   - Sampling Guidelines
   - Rubrics Text (Y/C/W/D criteria)
