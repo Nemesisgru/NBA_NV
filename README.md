@@ -4,7 +4,7 @@ A full-stack Academic Audit web application built for **K. Ramakrishnan Group of
 
 Developed with:
 - **Frontend**: React (Vite) + Lucide Icons + Custom Modern CSS Design System
-- **Backend**: Django 6.0 + SQLite + Django Admin Control Center + Custom REST APIs
+- **Backend**: Django 4.2 + SQLite + Django Admin Control Center + Custom REST APIs
 - **Excel Reference**: Directly modeled from `KRGI_Academic_Audit_Format.xlsx`
 
 ---
@@ -12,50 +12,71 @@ Developed with:
 ## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
-- Python 3.10+ (Django is installed in the system environment)
+- Python 3.10+ with the backend requirements installed (use a virtual environment for this project):
+  ```powershell
+  cd E:\NBA_NV\backend
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  pip install -r requirements.txt
+  ```
 - Node.js (A portable Node.js v20.18.0 environment is pre-configured in `tools/nodejs/`)
 
 ### 2. Start Backend Server
-From the project root:
 ```powershell
-cd "d:\NBA project\backend"
+cd E:\NBA_NV\backend
 python manage.py runserver 127.0.0.1:8000
 ```
-- **Web Application**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/) (serves compiled React application and live REST API)
+- **Web Application**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/) (opens the login page; serves the compiled React application and REST API)
 - **Django Admin Portal**: [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/)
 
 ### 3. (Optional) Run React Frontend in Dev Mode
 If you want hot-module replacement during frontend development:
 ```powershell
-cd "d:\NBA project\frontend"
-$env:PATH = "d:\NBA project\tools\nodejs;" + $env:PATH
+cd E:\NBA_NV\frontend
+$env:PATH = "E:\NBA_NV\tools\nodejs;" + $env:PATH
 npm run dev
 ```
 Access the dev server at: [http://localhost:3000/](http://localhost:3000/) (proxies API requests to port 8000).
+
+After changing frontend code, run `npm run build` so Django serves the new version from `frontend/dist`.
 
 ---
 
 ## 🔐 User Roles & System-Generated Logins
 
-The application includes a role-based authentication and context management system:
+Everyone signs in on the **login page** that opens at `/`. The login is kept in a Django session cookie, so refreshing the page keeps you signed in. What each role can see and change is enforced by the backend API, not only hidden in the UI:
+
+| | Admin | Auditor | HOD |
+|---|---|---|---|
+| Departments visible | All 3 institutes | Only departments allocated to them | Only their own (pickers locked) |
+| Criteria Evaluation (C1–C9) | View & edit all | Edit **only their allocated criteria** in the allocated cycle; others view-only | **View-only**, shown as the *Auditor's Report* |
+| Criterion Summary, Excel / PDF export | All departments | Allocated departments | Own department |
+| Action Taken Report | All fields, all departments | Auditor sign-off & feedback only | Root cause, action plan, target / completed date, evidence, status, HOD remarks |
+| KRGI Dashboard, Result Comparison | ✓ | – | – |
+| Auditor Allocation & Admin, Django Admin | ✓ | – | – |
+| Other users' login credentials | ✓ | – | – |
+
+Role checks live in `backend/audit_core/permissions.py`. Anonymous API calls get `401`; calls outside the user's role or departments get `403`.
 
 ### 1. Administrator / IQAC Director
 - **Username**: `admin`
 - **Password**: `admin123`
 - **Permissions**: Full control over department additions, auditor pool registry, individual auditor criteria allocations, and global threshold settings.
-- Access via the **Login** button on the web app or at `/admin/`.
+- Sign in on the login page, or at `/admin/` for Django Admin.
+- **Change this password before real use.**
 
 ### 2. Head of Department (HOD) Logins
 Separate user accounts and passwords are automatically generated for every department across all 3 institutes (**36 departments**).
 - **Login**: department email `hod.<dept>@<college>.ac.in` (e.g. `hod.cs@krct.ac.in`, `hod.ce@mkce.ac.in`) or username `hod.<institute_code>.<dept_code>`
 - **Passwords**: random temporary passwords, issued separately in `login.md` (git-ignored, not committed)
 
-*When an HOD logs in, the portal automatically locks to their department, allowing them to review auditor remarks, inspect all indicators scored below 60%, enter Root Cause Analysis and Action Plans, and download their department report.*
+*When an HOD logs in, the portal locks to their department. They read the auditor's report (scores and remarks, view-only) and, for every indicator scored below 60%, enter the Root Cause Analysis and Action Plan in the ATR tab. They can also download their department report.*
 
 ### 3. Academic Auditor Logins
 Separate user accounts and passwords are automatically generated for all **44 pooled auditors** from the Excel sheet.
 - **Username Format**: `auditor.<name_slug>`
-- **Password Format**: `Audit@<Name>#`
+- **Password Format**: `Audit@<Name>#` (predictable; reset these before real use)
+- An auditor only sees the departments, criteria and audit cycle the Admin allocated to them.
 - **Examples**:
   | Auditor Name | Institute & Dept | Auto Username | Auto Password |
   |--------------|------------------|---------------|---------------|
@@ -73,15 +94,17 @@ Separate user accounts and passwords are automatically generated for all **44 po
 
 ### 1. Criteria Evaluation Process (`C1` to `C9`)
 Individual criteria are organized into dedicated tabs matching the NBA SAR:
-- **C1**: Outcome-Based Curriculum (35 Marks)
-- **C2**: Outcome-Based Teaching Learning (100 Marks)
-- **C3**: Outcome-Based Assessment (125 Marks)
-- **C4**: Students' Performance (100 Marks)
+- **C1**: Outcome-Based Curriculum (120 Marks)
+- **C2**: Outcome-Based Teaching Learning (120 Marks)
+- **C3**: Outcome-Based Assessment (120 Marks)
+- **C4**: Students' Performance (120 Marks)
 - **C5**: Faculty Information (100 Marks)
-- **C6**: Faculty Contributions (100 Marks)
-- **C7**: Facilities and Technical Support (80 Marks)
-- **C8**: Continuous Improvement (75 Marks)
+- **C6**: Faculty Contributions (120 Marks)
+- **C7**: Facilities and Technical Support (100 Marks)
+- **C8**: Continuous Improvement (80 Marks)
 - **C9**: Student Support and Governance (120 Marks)
+
+Total: 1000 marks. The "CRITERION N TOTAL" rows of the Excel sheet are sub-totals and are stored as non-scorable header rows.
 
 #### Calculation Rules (Derived from Excel Formulas)
 $$\text{Validated Value} = \begin{cases} \left(\frac{\text{Valid Items}}{\text{Items Checked}}\right) \times 100 & \text{if Unit is } \% \\ \text{Valid Items} & \text{if Count} \end{cases}$$
@@ -185,32 +208,36 @@ Compare audit results across departments:
 
 ## 🛠️ REST API Reference
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/auth/login/` | `POST` | Authenticates Admin, Auditor, or HOD; returns profile and assigned scope |
-| `/api/bootstrap/` | `GET` | Returns institutes, departments, cycles, criteria, auditors, and credentials |
-| `/api/criteria/<code\>/` | `GET` | Returns all indicators and department evaluation marks for criterion `code` |
-| `/api/evaluations/save/` | `POST` | Saves evaluation; auto-calculates marks; flags and adds to ATR if `< 60%` |
-| `/api/criterion-summary/` | `GET` | Returns 1000-marks executive summary for selected department |
-| `/api/dashboard/` | `GET` | Returns cross-department and cross-institute performance matrix |
-| `/api/comparison/` | `GET` | Compares multi-department criterion scores and bar chart metrics |
-| `/api/atr/` | `GET` | Lists Action Taken Reports filtered by department, status, or grade |
-| `/api/atr/update/` | `POST` | Updates ATR root cause, action plan, target date, and auditor sign-off |
-| `/api/assignments/` | `GET` | Lists auditor assignments with individual criteria allocations |
-| `/api/assignments/save/` | `POST` | Saves Lead/Second auditors and individual criteria assignment per auditor |
-| `/api/departments/add/` | `POST` | Adds new department and auto-provisions HOD login credentials |
-| `/api/auditors/add/` | `POST` | Registers auditor and auto-generates username & password |
-| `/api/auditors/template/`| `GET` | Downloads CSV template for bulk auditor import |
-| `/api/auditors/bulk-upload/`| `POST` | Imports CSV auditors in bulk and auto-generates login credentials |
-| `/api/export/department-excel/` | `GET` | Downloads full department audit sheet and ATR in Excel-compatible CSV |
-| `/api/export/department-pdf/` | `GET` | Opens printable/PDF-exportable formal academic audit report |
+All endpoints except `auth/login` require a logged-in session. "Scoped" means non-admins only get their own (HOD) or allocated (Auditor) departments.
+
+| Endpoint | Method | Access | Description |
+|----------|--------|--------|-------------|
+| `/api/auth/login/` | `POST` | Public | Signs in Admin, Auditor, or HOD (username or email); starts a session and returns profile and assigned scope |
+| `/api/auth/me/` | `GET` | Any role | Returns the signed-in user (used to restore the session on page load) |
+| `/api/auth/logout/` | `POST` | Any role | Ends the session |
+| `/api/bootstrap/` | `GET` | Any role, scoped | Institutes, departments, cycles, criteria; auditor pool and credentials for Admin only |
+| `/api/criteria/<code\>/` | `GET` | Any role, scoped | Indicators and evaluation marks for criterion `code`, plus `can_edit` for the current user |
+| `/api/evaluations/save/` | `POST` | Admin, allocated Auditor | Saves evaluation; auto-calculates marks; flags and adds to ATR if `< 60%` |
+| `/api/criterion-summary/` | `GET` | Any role, scoped | 1000-marks executive summary for a department |
+| `/api/dashboard/` | `GET` | Admin | Cross-department and cross-institute performance matrix |
+| `/api/comparison/` | `GET` | Admin | Multi-department criterion score comparison |
+| `/api/atr/` | `GET` | Any role, scoped | Action Taken Reports filtered by department, status, grade, institute or criterion |
+| `/api/atr/update/` | `POST` | Any role, scoped | HOD: root cause, plan, dates, evidence, status, remarks. Auditor: sign-off and feedback. Admin: all |
+| `/api/assignments/` | `GET` | Admin | Auditor assignments with individual criteria allocations |
+| `/api/assignments/save/` | `POST` | Admin | Saves Lead/Second auditors and criteria per auditor |
+| `/api/departments/add/` | `POST` | Admin | Adds a department and provisions the HOD login |
+| `/api/auditors/add/` | `POST` | Admin | Registers an auditor and generates username & password |
+| `/api/auditors/template/`| `GET` | Admin | CSV template for bulk auditor import |
+| `/api/auditors/bulk-upload/`| `POST` | Admin | Imports auditors from CSV and generates logins |
+| `/api/export/department-excel/` | `GET` | Any role, scoped | Department audit sheet and ATR as Excel-compatible CSV |
+| `/api/export/department-pdf/` | `GET` | Any role, scoped | Printable / PDF-exportable formal audit report |
 
 ---
 
 ## 📂 Project Structure
 
 ```
-d:\NBA project/
+E:\NBA_NV/
 ├── KRGI_Academic_Audit_Format.xlsx   # Master source Excel workbook
 ├── parsed_audit_data.json            # Parsed structure of all 9 criteria, auditors, & rubrics
 ├── README.md                         # Complete project documentation
@@ -225,6 +252,7 @@ d:\NBA project/
 │       ├── models.py                 # Django models (Auditor, Department, Evaluation, ATR, etc.)
 │       ├── admin.py                  # Django Admin customized with badges & credentials
 │       ├── auth_utils.py             # Automatic username and password provisioning
+│       ├── permissions.py            # Role detection, department scoping & API access checks
 │       ├── views.py                  # REST API endpoints, Excel/PDF exports, & login
 │       ├── urls.py                   # App URL routes
 │       └── management/commands/
@@ -236,9 +264,10 @@ d:\NBA project/
     ├── index.html                    # SEO & Google Fonts (Plus Jakarta Sans)
     └── src/
         ├── index.css                 # Custom design system with HSL dark mode & glassmorphism
-        ├── App.jsx                   # Main application state & role-based routing
+        ├── App.jsx                   # Session restore, role-based tabs & main application state
         └── components/
-            ├── Navbar.jsx            # Header, role switcher, login modal, & export buttons
+            ├── LoginPage.jsx         # Full-screen sign-in page shown before the app
+            ├── Navbar.jsx            # Header, context pickers, role-filtered tabs, logout & export buttons
             ├── CriterionEvaluation.jsx # C1-C9 rubrics, live formulas, column & row checkboxes
             ├── CriterionSummary.jsx  # 1000-marks summary table & Excel/PDF downloads
             ├── KRGIDashboard.jsx     # KRGI cross-institutional matrix & heatmap

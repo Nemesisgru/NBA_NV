@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { 
-  Building2, Calendar, ShieldCheck, UserCheck, Layers, 
-  BarChart3, FileSpreadsheet, ExternalLink, PlusCircle, Download, FileText, LogIn, LogOut, Key 
+import React from 'react';
+import {
+  Building2, Calendar, ShieldCheck, UserCheck, Layers,
+  BarChart3, FileSpreadsheet, ExternalLink, Download, FileText, LogOut
 } from 'lucide-react';
 
 export default function Navbar({
@@ -16,42 +16,16 @@ export default function Navbar({
   setSelectedCycle,
   activeTab,
   setActiveTab,
+  allowedTabs,
   userRole,
-  setUserRole,
   currentUser,
-  onLogin,
-  onLogout,
-  onOpenAddDeptModal
+  onLogout
 }) {
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
-  const [loginError, setLoginError] = useState('');
-
   const filteredDepartments = departments.filter(
     d => !selectedInstitute || d.institute_code === selectedInstitute
   );
-
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-    try {
-      const res = await fetch('/api/auth/login/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        onLogin(data.user);
-        setShowLoginModal(false);
-        setLoginForm({ username: '', password: '' });
-      } else {
-        setLoginError(data.error || 'Login failed. Please check credentials.');
-      }
-    } catch (err) {
-      setLoginError('Server connection error.');
-    }
-  };
+  // An HOD is locked to their own department
+  const isHod = userRole === 'HOD';
 
   const excelExportUrl = `/api/export/department-excel/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
   const pdfExportUrl = `/api/export/department-pdf/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
@@ -116,6 +90,7 @@ export default function Navbar({
                 const firstInInst = departments.find(d => d.institute_code === e.target.value);
                 if (firstInInst) setSelectedDepartment(firstInInst.id);
               }}
+              disabled={isHod}
               style={{ width: '105px', padding: '6px 8px', fontSize: '0.8rem' }}
             >
               {institutes.map(inst => (
@@ -130,6 +105,7 @@ export default function Navbar({
             <select
               value={selectedDepartment || ''}
               onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+              disabled={isHod}
               style={{ width: '150px', padding: '6px 8px', fontSize: '0.8rem' }}
             >
               {filteredDepartments.map(d => (
@@ -180,7 +156,7 @@ export default function Navbar({
           </div>
 
           {/* User Account / Role Badge */}
-          {currentUser ? (
+          {currentUser && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -202,26 +178,20 @@ export default function Navbar({
                 <LogOut size={14} />
               </button>
             </div>
-          ) : (
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="btn btn-primary btn-sm"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <LogIn size={14} /> Login
-            </button>
           )}
 
           {/* Django Admin Link */}
-          <a 
-            href="/admin/" 
-            target="_blank" 
-            rel="noreferrer"
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-          >
-            <UserCheck size={14} /> Django Admin <ExternalLink size={12} />
-          </a>
+          {userRole === 'Admin' && (
+            <a
+              href="/admin/"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+            >
+              <UserCheck size={14} /> Django Admin <ExternalLink size={12} />
+            </a>
+          )}
         </div>
       </div>
 
@@ -235,13 +205,13 @@ export default function Navbar({
         background: '#0f172a'
       }}>
         {[
-          { id: 'criteria', label: 'Criteria Evaluation (C1 - C9)', icon: Layers },
+          { id: 'criteria', label: isHod ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)', icon: Layers },
           { id: 'summary', label: 'Criterion Summary (1000M)', icon: FileSpreadsheet },
           { id: 'dashboard', label: 'KRGI Dashboard', icon: BarChart3 },
           { id: 'atr', label: 'Action Taken Report (ATR)', icon: ShieldCheck },
           { id: 'allocations', label: 'Auditor Allocation & Admin', icon: UserCheck },
           { id: 'comparison', label: 'Result Comparison', icon: BarChart3 },
-        ].map(tab => {
+        ].filter(tab => allowedTabs.includes(tab.id)).map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -270,82 +240,6 @@ export default function Navbar({
           );
         })}
       </nav>
-
-      {/* Login Modal */}
-      {showLoginModal && (
-        <div className="modal-overlay">
-          <div className="modal-content animate-fade-in" style={{ maxWidth: '420px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Key size={18} color="#6366f1" />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc' }}>
-                  User Account Login
-                </h3>
-              </div>
-              <button 
-                onClick={() => setShowLoginModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer' }}
-              >
-                &times;
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '14px' }}>
-              Log in as an <strong>Auditor</strong>, <strong>Head of Department (HOD)</strong>, or <strong>Admin</strong>. Separate logins are auto-generated for all members.
-            </p>
-
-            {loginError && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#ef4444', padding: '8px 12px', borderRadius: '6px', fontSize: '0.775rem', marginBottom: '12px' }}>
-                {loginError}
-              </div>
-            )}
-
-            <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                  Email or Username
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. hod.cs@krct.ac.in, auditor.oorkalan or admin"
-                  value={loginForm.username}
-                  onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Enter account password"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                />
-              </div>
-
-              <div style={{ background: '#0f172a', padding: '10px', borderRadius: '6px', fontSize: '0.725rem', color: '#64748b' }}>
-                <strong>Quick Reference:</strong><br />
-                • <strong>Admin:</strong> <code>admin</code> / <code>admin123</code><br />
-                • <strong>Auditor:</strong> <code>auditor.&lt;name&gt;</code> / <code>Audit@&lt;Name&gt;#</code><br />
-                • <strong>HOD:</strong> <code>hod.&lt;inst&gt;.&lt;dept&gt;</code> / <code>Hod@&lt;Dept&gt;2025#</code>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={() => setShowLoginModal(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Log In
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </header>
   );

@@ -7,7 +7,15 @@ import ATRWorkspace from './components/ATRWorkspace';
 import AdminAllocation from './components/AdminAllocation';
 import ComparisonPage from './components/ComparisonPage';
 import CycleFilterBar from './components/CycleFilterBar';
+import LoginPage from './components/LoginPage';
 import { Loader2 } from 'lucide-react';
+
+// Tabs each role may open; the backend enforces the same limits on the API
+const ROLE_TABS = {
+  Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'comparison'],
+  Auditor: ['criteria', 'summary', 'atr'],
+  HOD: ['criteria', 'summary', 'atr']
+};
 
 export default function App() {
   const [bootstrap, setBootstrap] = useState(null);
@@ -19,38 +27,70 @@ export default function App() {
   const [selectedInstitute, setSelectedInstitute] = useState('KRCT');
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState(null);
-  const [userRole, setUserRole] = useState('Auditor'); // 'Auditor' | 'HOD' | 'Admin'
   const [currentUser, setCurrentUser] = useState(null);
+  const userRole = currentUser?.role; // 'Auditor' | 'HOD' | 'Admin'
 
-  // Fetch initial bootstrap configuration
-  const fetchBootstrap = async () => {
+  // Load reference data (scoped to the user by the backend) and pick the user's starting context
+  const startSession = async (user) => {
+    setLoading(true);
     try {
       const res = await fetch('/api/bootstrap/');
+      if (!res.ok) throw new Error(`bootstrap ${res.status}`);
       const data = await res.json();
-      setBootstrap(data);
 
-      if (data.cycles && data.cycles.length > 0) {
-        setSelectedCycle(data.active_cycle_id || data.cycles[0].id);
-      }
+      let cycleId = data.active_cycle_id || data.cycles[0]?.id;
+      let dept = data.departments.find(d => d.institute_code === 'KRCT') || data.departments[0];
+      let tab = 'criteria';
+      let criterion = 'C1';
 
-      if (data.departments && data.departments.length > 0) {
-        const krctDepts = data.departments.filter(d => d.institute_code === 'KRCT');
-        if (krctDepts.length > 0) {
-          setSelectedDepartment(krctDepts[0].id);
-        } else {
-          setSelectedDepartment(data.departments[0].id);
+      if (user.role === 'HOD' && user.hod_info) {
+        dept = data.departments.find(d => d.id === user.hod_info.department_id) || dept;
+      } else if (user.role === 'Auditor') {
+        // Start on the most recent cycle the auditor has an allocation in
+        const assignments = [...(user.auditor_info?.assignments || [])].sort((a, b) => b.cycle_id - a.cycle_id);
+        if (assignments.length > 0) {
+          const first = assignments[0];
+          cycleId = first.cycle_id;
+          dept = data.departments.find(d => d.id === first.department_id) || dept;
+          criterion = first.assigned_criteria?.[0] || criterion;
         }
       }
+
+      setBootstrap(data);
+      setSelectedCycle(cycleId);
+      setSelectedDepartment(dept ? dept.id : null);
+      setSelectedInstitute(dept ? dept.institute_code : '');
+      setActiveCriterionCode(criterion);
+      setActiveTab(tab);
+      setCurrentUser(user);
     } catch (err) {
       console.error("Failed to load bootstrap data:", err);
+      setCurrentUser(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const resetSession = () => {
+    setCurrentUser(null);
+    setBootstrap(null);
+    setLoading(false);
+  };
+
+  // Restore an existing session on page load, and drop back to the login page if it expires
   useEffect(() => {
-    fetchBootstrap();
+    fetch('/api/auth/me/')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => (data?.user ? startSession(data.user) : resetSession()))
+      .catch(resetSession);
+
+    window.addEventListener('auth:expired', resetSession);
+    return () => window.removeEventListener('auth:expired', resetSession);
   }, []);
+
+  if (!loading && !currentUser) {
+    return <LoginPage onLogin={startSession} />;
+  }
 
   if (loading || !bootstrap) {
     return (
@@ -82,30 +122,24 @@ export default function App() {
     );
   }
 
-  const handleLogin = (user) => {
-    setCurrentUser(user);
-    setUserRole(user.role);
-    if (user.role === 'HOD' && user.hod_info) {
-      setSelectedInstitute(user.hod_info.institute_code);
-      setSelectedDepartment(user.hod_info.department_id);
-      setActiveTab('atr');
-    } else if (user.role === 'Auditor' && user.auditor_info && user.auditor_info.assignments?.length > 0) {
-      const firstAss = user.auditor_info.assignments[0];
-      setSelectedInstitute(firstAss.institute_code);
-      setSelectedDepartment(firstAss.department_id);
-      if (firstAss.assigned_criteria?.length > 0) {
-        setActiveCriterionCode(firstAss.assigned_criteria[0]);
-      }
-      setActiveTab('criteria');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout/', { method: 'POST' });
+    } finally {
+      resetSession();
     }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setUserRole('Auditor');
-  };
-
+  const allowedTabs = ROLE_TABS[userRole] || [];
+  const currentTab = allowedTabs.includes(activeTab) ? activeTab : allowedTabs[0];
   const currentDept = bootstrap.departments.find(d => d.id === selectedDepartment);
+
+  // Criteria this auditor may score for the selected department and cycle
+  const auditorCriteria = userRole === 'Auditor'
+    ? (currentUser.auditor_info?.assignments || [])
+        .filter(a => a.department_id === selectedDepartment && a.cycle_id === selectedCycle)
+        .flatMap(a => a.assigned_criteria || [])
+    : null;
 
   // Tabs that show the year/cycle filter bar (synced with the ribbon cycle picker)
   const cycleFilterTabs = {
@@ -145,14 +179,12 @@ export default function App() {
         setSelectedDepartment={setSelectedDepartment}
         selectedCycle={selectedCycle}
         setSelectedCycle={setSelectedCycle}
-        activeTab={activeTab}
+        activeTab={currentTab}
         setActiveTab={setActiveTab}
+        allowedTabs={allowedTabs}
         userRole={userRole}
-        setUserRole={setUserRole}
         currentUser={currentUser}
-        onLogin={handleLogin}
         onLogout={handleLogout}
-        onOpenAddDeptModal={() => setActiveTab('allocations')}
       />
 
       {/* Role / Logged in contextual alert bar */}
@@ -169,11 +201,14 @@ export default function App() {
           <div>
             {currentUser.role === 'HOD' ? (
               <span>
-                🏛️ Logged in as <strong>Head of Department ({currentUser.hod_info?.institute_code} - {currentUser.hod_info?.department_code})</strong>. Review comments, inspect indicators scored &lt; 60%, and enter ATR actions.
+                🏛️ Logged in as <strong>Head of Department ({currentUser.hod_info?.institute_code} - {currentUser.hod_info?.department_code})</strong>. The auditor's report is view-only; enter your root cause and action plan in the Action Taken Report.
               </span>
             ) : currentUser.role === 'Auditor' ? (
               <span>
-                🔍 Logged in as <strong>{currentUser.auditor_info?.name}</strong>. Inspecting assigned department criteria.
+                🔍 Logged in as <strong>{currentUser.auditor_info?.name}</strong>.{' '}
+                {auditorCriteria.length > 0
+                  ? <>You can evaluate <strong>{auditorCriteria.join(', ')}</strong> for this department; other criteria are view-only.</>
+                  : <>You have no criteria allocated for this department in the selected cycle (view-only).</>}
               </span>
             ) : (
               <span>
@@ -181,27 +216,27 @@ export default function App() {
               </span>
             )}
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem' }}
           >
-            Switch Account
+            Log out
           </button>
         </div>
       )}
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '24px', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
-        {cycleFilterTabs[activeTab] && (
+        {cycleFilterTabs[currentTab] && (
           <CycleFilterBar
             cycles={bootstrap.cycles}
             selectedCycle={selectedCycle}
             setSelectedCycle={setSelectedCycle}
-            tabLabel={cycleFilterTabs[activeTab]}
+            tabLabel={cycleFilterTabs[currentTab]}
           />
         )}
 
-        {activeTab === 'criteria' && (
+        {currentTab === 'criteria' && (
           <CriterionEvaluation
             criteriaList={bootstrap.criteria}
             activeCriterionCode={activeCriterionCode}
@@ -210,11 +245,12 @@ export default function App() {
             selectedCycleId={selectedCycle}
             departmentInfo={currentDept}
             userRole={userRole}
+            editableCriteria={auditorCriteria}
             onNavigateToATR={() => setActiveTab('atr')}
           />
         )}
 
-        {activeTab === 'summary' && (
+        {currentTab === 'summary' && (
           <CriterionSummary
             selectedDepartmentId={selectedDepartment}
             selectedCycleId={selectedCycle}
@@ -225,7 +261,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'dashboard' && (
+        {currentTab === 'dashboard' && (
           <KRGIDashboard
             selectedCycleId={selectedCycle}
             onSelectDepartment={(deptId, instCode) => {
@@ -236,7 +272,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'atr' && (
+        {currentTab === 'atr' && (
           <ATRWorkspace
             institutes={bootstrap.institutes}
             criteriaList={bootstrap.criteria}
@@ -247,7 +283,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'allocations' && (
+        {currentTab === 'allocations' && (
           <AdminAllocation
             institutes={bootstrap.institutes}
             departments={bootstrap.departments}
@@ -260,7 +296,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'comparison' && (
+        {currentTab === 'comparison' && (
           <ComparisonPage
             departments={bootstrap.departments}
             selectedCycleId={selectedCycle}

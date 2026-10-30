@@ -25,10 +25,14 @@ export default function CriterionEvaluation({
   selectedCycleId,
   departmentInfo,
   userRole,
+  editableCriteria,
   onNavigateToATR
 }) {
   const [criterionData, setCriterionData] = useState(null);
   const [metrics, setMetrics] = useState([]);
+  // Set by the backend: Admin, or the auditor allocated this criterion; HODs always view-only
+  const [canEdit, setCanEdit] = useState(false);
+  const readOnly = !canEdit;
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState('ALL');
@@ -61,6 +65,7 @@ export default function CriterionEvaluation({
         setCriterionData(data.criterion);
         setMetrics(data.metrics || []);
       }
+      setCanEdit(Boolean(data.can_edit));
     } catch (err) {
       console.error("Failed to load criterion:", err);
     } finally {
@@ -75,6 +80,7 @@ export default function CriterionEvaluation({
 
   // Recalculate local metric values
   const handleInputChange = (metricId, field, value) => {
+    if (readOnly) return;
     setMetrics(prev => prev.map(m => {
       if (m.id !== metricId) return m;
 
@@ -279,6 +285,7 @@ export default function CriterionEvaluation({
       }}>
         {criteriaList.map(c => {
           const isCurrent = c.code === activeCriterionCode;
+          const isAllocated = !editableCriteria || editableCriteria.includes(c.code);
           return (
             <button
               key={c.code}
@@ -311,6 +318,9 @@ export default function CriterionEvaluation({
               </span>
               <span>{c.title}</span>
               <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({fmt2(c.max_marks)}M)</span>
+              {userRole === 'Auditor' && isAllocated && (
+                <span title="Allocated to you" style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 700 }}>● yours</span>
+              )}
             </button>
           );
         })}
@@ -372,6 +382,25 @@ export default function CriterionEvaluation({
           </div>
         </div>
       </div>
+
+      {readOnly && !loading && (
+        <div style={{
+          background: 'rgba(56, 189, 248, 0.08)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: '10px',
+          padding: '10px 16px',
+          fontSize: '0.8rem',
+          color: '#bae6fd',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Info size={15} />
+          {userRole === 'HOD'
+            ? <span>This is the auditor's report for your department (view-only). Indicators below 60% appear in the <strong>Action Taken Report</strong> tab, where you enter the root cause and action plan.</span>
+            : <span>View-only: {activeCriterionCode} of this department is not allocated to you for this audit cycle.</span>}
+        </div>
+      )}
 
       {/* Action Toolbar */}
       <div style={{
@@ -487,7 +516,7 @@ export default function CriterionEvaluation({
           )}
 
           {/* Bulk Action for selected rows */}
-          {selectedRowIds.size > 0 && (
+          {!readOnly && selectedRowIds.size > 0 && (
             <button
               onClick={bulkFlagForATR}
               className="btn btn-sm"
@@ -530,6 +559,7 @@ export default function CriterionEvaluation({
                     type="checkbox"
                     checked={selectedRowIds.size > 0 && selectedRowIds.size === evaluableMetrics.length}
                     onChange={toggleSelectAll}
+                    disabled={readOnly}
                     title="Select all rows"
                   />
                 </th>
@@ -623,6 +653,7 @@ export default function CriterionEvaluation({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleRowSelect(item.id)}
+                        disabled={readOnly}
                       />
                     </td>
 
@@ -686,13 +717,13 @@ export default function CriterionEvaluation({
                             step="0.01"
                             value={ev.items_checked !== null && ev.items_checked !== undefined ? ev.items_checked : ''}
                             onChange={(e) => handleInputChange(item.id, 'items_checked', e.target.value)}
-                            disabled={userRole === 'HOD'}
+                            disabled={readOnly}
                             style={{ 
                               width: '65px', 
                               textAlign: 'center', 
                               padding: '4px 6px', 
                               fontSize: '0.8rem',
-                              border: ev.items_checked ? '1px solid #4f46e5' : undefined 
+                              border: !readOnly && ev.items_checked ? '1px solid #4f46e5' : undefined 
                             }}
                             placeholder="0"
                           />
@@ -704,13 +735,13 @@ export default function CriterionEvaluation({
                             step="0.01"
                             value={ev.valid_items !== null && ev.valid_items !== undefined ? ev.valid_items : ''}
                             onChange={(e) => handleInputChange(item.id, 'valid_items', e.target.value)}
-                            disabled={userRole === 'HOD'}
+                            disabled={readOnly}
                             style={{ 
                               width: '65px', 
                               textAlign: 'center', 
                               padding: '4px 6px', 
                               fontSize: '0.8rem',
-                              border: ev.valid_items ? '1px solid #10b981' : undefined
+                              border: !readOnly && ev.valid_items ? '1px solid #10b981' : undefined
                             }}
                             placeholder="0"
                           />
@@ -752,7 +783,7 @@ export default function CriterionEvaluation({
                           type="text"
                           value={ev.auditor_remarks || ''}
                           onChange={(e) => handleInputChange(item.id, 'auditor_remarks', e.target.value)}
-                          disabled={userRole === 'HOD'}
+                          disabled={readOnly}
                           placeholder="Add verification notes..."
                           style={{ fontSize: '0.775rem', padding: '4px 8px' }}
                         />
@@ -766,7 +797,7 @@ export default function CriterionEvaluation({
                           <select
                             value={ev.evidence_status || 'Complete'}
                             onChange={(e) => handleInputChange(item.id, 'evidence_status', e.target.value)}
-                            disabled={userRole === 'HOD'}
+                            disabled={readOnly}
                             style={{ fontSize: '0.75rem', padding: '3px 6px' }}
                           >
                             <option value="Complete">Complete</option>
@@ -778,7 +809,7 @@ export default function CriterionEvaluation({
                           <select
                             value={ev.physical_check_result || 'Matches claim'}
                             onChange={(e) => handleInputChange(item.id, 'physical_check_result', e.target.value)}
-                            disabled={userRole === 'HOD'}
+                            disabled={readOnly}
                             style={{ fontSize: '0.75rem', padding: '3px 6px' }}
                           >
                             <option value="Matches claim">Matches claim</option>
@@ -797,6 +828,7 @@ export default function CriterionEvaluation({
                           type="checkbox"
                           checked={Boolean(ev.is_flagged_for_atr)}
                           onChange={(e) => handleInputChange(item.id, 'is_flagged_for_atr', e.target.checked)}
+                          disabled={readOnly}
                           title="Flag this item for HOD Action Taken Report"
                         />
                       </td>

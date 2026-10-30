@@ -14,6 +14,9 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
   const [instituteFilter, setInstituteFilter] = useState('ALL');
   const [criterionFilter, setCriterionFilter] = useState('ALL');
   const showAll = userRole === 'Admin' && scope === 'all';
+  // HOD writes the corrective action; auditor only verifies and signs off (backend enforces the same split)
+  const canEditAction = userRole === 'Admin' || userRole === 'HOD';
+  const canSignOff = userRole === 'Admin' || userRole === 'Auditor';
 
   const fetchAtrs = async () => {
     setLoading(true);
@@ -68,6 +71,8 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
         setSaveStatus('Saved successfully!');
         setEditingAtr(null);
         await fetchAtrs();
+      } else {
+        setSaveStatus(json.error || 'Failed to save');
       }
     } catch (err) {
       setSaveStatus('Failed to save');
@@ -141,7 +146,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
             <FileText size={14} /> Print / Save PDF
           </a>
           </>)}
-          {selectedIds.size > 0 && (
+          {canEditAction && selectedIds.size > 0 && (
             <div style={{ display: 'flex', gap: '6px' }}>
               <button 
                 onClick={() => bulkUpdateStatus('In Progress')}
@@ -271,6 +276,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                   type="checkbox"
                   checked={selectedIds.size > 0 && selectedIds.size === atrs.length}
                   onChange={toggleSelectAll}
+                  disabled={!canEditAction}
                 />
               </th>
               <th style={{ width: '90px' }}>Dept</th>
@@ -303,6 +309,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelect(item.atr_id)}
+                        disabled={!canEditAction}
                       />
                     </td>
                     <td style={{ fontWeight: 700, color: '#818cf8' }}>
@@ -357,7 +364,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                         className="btn btn-secondary btn-sm"
                         style={{ padding: '3px 8px', fontSize: '0.75rem' }}
                       >
-                        <Edit3 size={13} /> Edit
+                        <Edit3 size={13} /> {canEditAction ? 'Edit' : 'Review'}
                       </button>
                     </td>
                   </tr>
@@ -374,7 +381,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
           <div className="modal-content animate-fade-in">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc' }}>
-                Write Action Taken Report (ATR)
+                {canEditAction ? 'Write Action Taken Report (ATR)' : 'Review & Sign-off ATR'}
               </h3>
               <button 
                 onClick={() => setEditingAtr(null)}
@@ -391,13 +398,18 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
               <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '4px' }}>
                 {editingAtr.key_aspect}
               </div>
+              <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '6px' }}>
+                Auditor remarks: {editingAtr.auditor_remarks || '-'} ({editingAtr.percentage}%)
+              </div>
             </div>
 
             <form onSubmit={(e) => {
               e.preventDefault();
               handleSaveATR(editingAtr);
             }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
+
+              {/* Fields the HOD fills in; read-only for the auditor */}
+              <fieldset disabled={!canEditAction} style={{ border: 'none', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '0.775rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
                   Root Cause Analysis (Why did this indicator fall short?)
@@ -461,7 +473,26 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                 />
               </div>
 
-              {userRole !== 'HOD' && (
+              <div>
+                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                  HOD Remarks
+                </label>
+                <input
+                  type="text"
+                  value={editingAtr.hod_remarks || ''}
+                  onChange={(e) => setEditingAtr({ ...editingAtr, hod_remarks: e.target.value })}
+                  placeholder="Any remarks for the auditor..."
+                />
+              </div>
+              </fieldset>
+
+              {!canSignOff && editingAtr.auditor_signoff && (
+                <div style={{ fontSize: '0.8rem', color: '#10b981' }}>
+                  ✓ Signed off by auditor{editingAtr.auditor_feedback ? `: ${editingAtr.auditor_feedback}` : ''}
+                </div>
+              )}
+
+              {canSignOff && (
                 <div style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.825rem', fontWeight: 700, color: '#10b981', cursor: 'pointer' }}>
                     <input
@@ -482,6 +513,11 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                {saveStatus && (
+                  <span style={{ fontSize: '0.775rem', color: saveStatus.startsWith('Saved') || saveStatus.startsWith('Saving') ? '#10b981' : '#ef4444', marginRight: 'auto' }}>
+                    {saveStatus}
+                  </span>
+                )}
                 <button type="button" onClick={() => setEditingAtr(null)} className="btn btn-secondary">
                   Cancel
                 </button>

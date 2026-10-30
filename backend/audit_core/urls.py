@@ -17,6 +17,8 @@ urlpatterns = [
     path('auditors/template/', views.download_auditor_template, name='download_auditor_template'),
     path('auditors/bulk-upload/', views.bulk_upload_auditors, name='bulk_upload_auditors'),
     path('auth/login/', views.auth_login_view, name='auth_login_view'),
+    path('auth/me/', views.auth_me_view, name='auth_me_view'),
+    path('auth/logout/', views.auth_logout_view, name='auth_logout_view'),
     path('export/department-excel/', views.export_department_excel, name='export_department_excel'),
     path('export/department-pdf/', views.export_department_pdf, name='export_department_pdf'),
 ]

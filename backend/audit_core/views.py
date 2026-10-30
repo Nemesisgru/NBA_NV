@@ -5,13 +5,17 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from .models import (
     Institute, Department, Auditor, AuditCycle, Criterion,
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
 )
 from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user
+from .permissions import (
+    HOD_ATR_FIELDS, AUDITOR_ATR_FIELDS, user_role, auditor_assignments, criteria_for,
+    scoped_department_ids, can_view_department, can_edit_criterion, role_required, forbidden
+)
 
 def get_settings():
     s = AuditSettings.objects.first()
@@ -53,27 +57,43 @@ def auth_login_view(request):
     user = authenticate(username=username, password=password)
     if not user:
         return JsonResponse({'error': 'Invalid username or password'}, status=401)
+    if user_role(user) is None:
+        return JsonResponse({'error': 'This account has no Admin, Auditor or HOD role'}, status=403)
 
-    # Determine user role and context
-    role = 'Admin' if (user.is_superuser or user.is_staff) else 'Auditor'
+    login(request, user)
+    return JsonResponse({'status': 'success', 'user': user_payload(user)})
+
+def auth_me_view(request):
+    """Current session user, used by the frontend to restore a login after page reload"""
+    if user_role(request.user) is None:
+        return JsonResponse({'error': 'Login required'}, status=401)
+    return JsonResponse({'status': 'success', 'user': user_payload(request.user)})
+
+@csrf_exempt
+def auth_logout_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    logout(request)
+    return JsonResponse({'status': 'success'})
+
+def user_payload(user):
+    """Profile, role and assigned scope returned to the frontend after login"""
+    role = user_role(user)
     auditor_info = None
     hod_info = None
 
-    if hasattr(user, 'auditor_profile') and user.auditor_profile:
-        role = 'Auditor'
+    if role == 'Auditor':
         auditor = user.auditor_profile
         # Find all assigned departments for this auditor
-        assignments = AuditAssignment.objects.filter(
-            Q(auditor_1=auditor) | Q(auditor_2=auditor)
-        ).select_related('department__institute')
+        assignments = auditor_assignments(auditor).select_related('department__institute')
         assigned_list = []
         for ass in assignments:
-            crit = ass.auditor_1_criteria if ass.auditor_1_id == auditor.id else ass.auditor_2_criteria
             assigned_list.append({
+                'cycle_id': ass.cycle_id,
                 'department_id': ass.department_id,
                 'department_code': ass.department.code,
                 'institute_code': ass.department.institute.code,
-                'assigned_criteria': crit or ass.assigned_criteria
+                'assigned_criteria': criteria_for(ass, auditor)
             })
         auditor_info = {
             'auditor_id': auditor.id,
@@ -84,8 +104,7 @@ def auth_login_view(request):
             'assignments': assigned_list
         }
 
-    elif hasattr(user, 'hod_department') and user.hod_department:
-        role = 'HOD'
+    elif role == 'HOD':
         dept = user.hod_department
         hod_info = {
             'department_id': dept.id,
@@ -96,25 +115,28 @@ def auth_login_view(request):
             'hod_email': dept.hod_email
         }
 
-    return JsonResponse({
-        'status': 'success',
-        'user': {
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'role': role,
-            'auditor_info': auditor_info,
-            'hod_info': hod_info
-        }
-    })
+    return {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'role': role,
+        'auditor_info': auditor_info,
+        'hod_info': hod_info
+    }
 
+@role_required()
 def bootstrap_data(request):
-    """Initial app configuration and reference data with user credentials"""
+    """Initial app configuration and reference data, limited to the user's scope (credentials for Admin only)"""
     settings = get_settings()
-    institutes = list(Institute.objects.values('id', 'code', 'name'))
-    
+    is_admin = request.role == 'Admin'
+    dept_ids = scoped_department_ids(request)
+
+    dept_qs = Department.objects.select_related('institute', 'hod_user').order_by('institute__code', 'id')
+    if dept_ids is not None:
+        dept_qs = dept_qs.filter(id__in=dept_ids)
+
     departments = []
-    for d in Department.objects.select_related('institute', 'hod_user').all():
+    for d in dept_qs:
         departments.append({
             'id': d.id,
             'institute_id': d.institute_id,
@@ -123,9 +145,12 @@ def bootstrap_data(request):
             'name': d.name,
             'hod_name': d.hod_name,
             'hod_email': d.hod_email,
-            'hod_username': d.hod_user.username if d.hod_user else '',
-            'hod_initial_password': d.hod_initial_password,
+            'hod_username': d.hod_user.username if (is_admin and d.hod_user) else '',
+            'hod_initial_password': d.hod_initial_password if is_admin else '',
         })
+
+    visible_institutes = {d['institute_code'] for d in departments}
+    institutes = [i for i in Institute.objects.values('id', 'code', 'name') if is_admin or i['code'] in visible_institutes]
 
     cycles = list(AuditCycle.objects.values('id', 'academic_year', 'cycle_type', 'semester', 'is_active'))
     active_cycle = AuditCycle.objects.filter(is_active=True).first()
@@ -143,8 +168,10 @@ def bootstrap_data(request):
             'max_marks': sum(m.max_marks for m in c.metrics.filter(is_header=False))
         })
 
+    # The auditor pool (with login credentials) is only needed by the Admin allocation page
     auditors = []
-    for a in Auditor.objects.filter(is_active=True).select_related('institute', 'user').order_by('sl_no', 'name'):
+    auditor_qs = Auditor.objects.filter(is_active=True) if is_admin else Auditor.objects.none()
+    for a in auditor_qs.select_related('institute', 'user').order_by('sl_no', 'name'):
         auditors.append({
             'id': a.id,
             'sl_no': a.sl_no,
@@ -174,6 +201,7 @@ def bootstrap_data(request):
         }
     })
 
+@role_required()
 def criterion_detail(request, criterion_code):
     """Detailed rubric items & current evaluations for a criterion and department"""
     dept_id = request.GET.get('department_id')
@@ -182,6 +210,8 @@ def criterion_detail(request, criterion_code):
     crit = Criterion.objects.filter(code=criterion_code.upper()).first()
     if not crit:
         return JsonResponse({'error': 'Criterion not found'}, status=404)
+    if dept_id and not can_view_department(request, dept_id):
+        return forbidden()
 
     eval_map = {}
     if dept_id and cycle_id:
@@ -232,10 +262,12 @@ def criterion_detail(request, criterion_code):
             'description': crit.description,
             'order': crit.order
         },
+        'can_edit': bool(dept_id and cycle_id) and can_edit_criterion(request, dept_id, cycle_id, crit.code),
         'metrics': items
     })
 
 @csrf_exempt
+@role_required('Admin', 'Auditor')
 def save_evaluation(request):
     """Save an individual metric evaluation with live calculations and automatic ATR for < 60%"""
     if request.method != 'POST':
@@ -258,6 +290,8 @@ def save_evaluation(request):
         return JsonResponse({'error': 'Department not found'}, status=404)
     if not AuditCycle.objects.filter(id=cycle_id).exists():
         return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+    if not can_edit_criterion(request, dept_id, cycle_id, metric.criterion.code):
+        return forbidden(f'{metric.criterion.code} of this department is not assigned to you for this audit cycle')
 
     settings = get_settings()
 
@@ -354,6 +388,7 @@ def save_evaluation(request):
         }
     })
 
+@role_required()
 def criterion_summary(request):
     """Aggregated summary matching Excel 'Criterion Summary' tab (C1 to C9)"""
     dept_id = request.GET.get('department_id')
@@ -361,9 +396,13 @@ def criterion_summary(request):
 
     if not dept_id or not cycle_id:
         return JsonResponse({'error': 'department_id and cycle_id required'}, status=400)
+    if not can_view_department(request, dept_id):
+        return forbidden()
 
     dept = Department.objects.filter(id=dept_id).first()
     cycle = AuditCycle.objects.filter(id=cycle_id).first()
+    if not dept or not cycle:
+        return JsonResponse({'error': 'Department or cycle not found'}, status=404)
     settings = get_settings()
 
     summary_rows = []
@@ -445,6 +484,7 @@ def criterion_summary(request):
         }
     })
 
+@role_required('Admin')
 def dashboard_overview(request):
     """Cross-department & cross-institute overview matching Excel 'KRGI Dashboard'"""
     cycle_id = request.GET.get('cycle_id')
@@ -524,6 +564,7 @@ def dashboard_overview(request):
         'department_matrix': department_matrix
     })
 
+@role_required('Admin')
 def comparison_view(request):
     """Multi-department comparison analytics"""
     dept_ids = request.GET.getlist('department_ids')
@@ -575,9 +616,13 @@ def comparison_view(request):
         'departments': comparison_data
     })
 
+@role_required()
 def atr_list(request):
-    """Listing Action Taken Reports with filters"""
+    """Listing Action Taken Reports with filters (non-admins only see their own departments)"""
     dept_id = request.GET.get('department_id')
+    if dept_id and not can_view_department(request, dept_id):
+        return forbidden()
+    scope_ids = scoped_department_ids(request)
     cycle_id = request.GET.get('cycle_id')
     status = request.GET.get('status')
     grade = request.GET.get('grade')
@@ -588,6 +633,8 @@ def atr_list(request):
         'evaluation__department', 'evaluation__metric__criterion', 'evaluation__cycle'
     )
 
+    if scope_ids is not None:
+        query = query.filter(evaluation__department_id__in=scope_ids)
     if dept_id:
         query = query.filter(evaluation__department_id=dept_id)
     if cycle_id:
@@ -633,8 +680,9 @@ def atr_list(request):
     return JsonResponse({'atrs': atrs})
 
 @csrf_exempt
+@role_required()
 def update_atr(request):
-    """HOD or Auditor updates Action Taken Report"""
+    """HOD fills root cause / action plan; Auditor signs off; Admin may change everything"""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
@@ -643,14 +691,27 @@ def update_atr(request):
     eval_id = data.get('evaluation_id')
 
     if atr_id:
-        atr = ActionTakenReport.objects.filter(id=atr_id).first()
+        atr = ActionTakenReport.objects.filter(id=atr_id).select_related('evaluation').first()
     elif eval_id:
-        atr, _ = ActionTakenReport.objects.get_or_create(evaluation_id=eval_id)
+        ev = AuditEvaluation.objects.filter(id=eval_id).first()
+        if not ev:
+            return JsonResponse({'error': 'Evaluation not found'}, status=404)
+        if not can_view_department(request, ev.department_id):
+            return forbidden()
+        atr, _ = ActionTakenReport.objects.get_or_create(evaluation=ev)
     else:
         return JsonResponse({'error': 'atr_id or evaluation_id required'}, status=400)
 
     if not atr:
         return JsonResponse({'error': 'ATR not found'}, status=404)
+    if not can_view_department(request, atr.evaluation.department_id):
+        return forbidden()
+
+    # Drop fields this role is not allowed to change
+    if request.role == 'HOD':
+        data = {k: v for k, v in data.items() if k in HOD_ATR_FIELDS}
+    elif request.role == 'Auditor':
+        data = {k: v for k, v in data.items() if k in AUDITOR_ATR_FIELDS}
 
     if 'root_cause' in data: atr.root_cause = data['root_cause']
     if 'action_plan' in data: atr.action_plan = data['action_plan']
@@ -665,6 +726,7 @@ def update_atr(request):
     atr.save()
     return JsonResponse({'status': 'success', 'atr_id': atr.id, 'new_status': atr.status})
 
+@role_required('Admin')
 def assignments_list(request):
     """List auditor assignments by cycle with individual auditor criteria"""
     cycle_id = request.GET.get('cycle_id')
@@ -710,6 +772,7 @@ def assignments_list(request):
     })
 
 @csrf_exempt
+@role_required('Admin')
 def save_assignment(request):
     """Assign individual auditors to departments with individual criteria assignment"""
     if request.method != 'POST':
@@ -764,6 +827,7 @@ def save_assignment(request):
     return JsonResponse({'status': 'success', 'assignment_id': assign.id, 'check': check_msg})
 
 @csrf_exempt
+@role_required('Admin')
 def add_department(request):
     """Provisions to add a new department dynamically and auto-provision HOD login"""
     if request.method != 'POST':
@@ -811,6 +875,7 @@ def add_department(request):
     })
 
 @csrf_exempt
+@role_required('Admin')
 def add_auditor(request):
     """Register individual auditor with automatic login and password generation"""
     if request.method != 'POST':
@@ -857,6 +922,7 @@ def add_auditor(request):
         }
     })
 
+@role_required('Admin')
 def download_auditor_template(request):
     """Download CSV template for bulk auditor upload"""
     response = HttpResponse(content_type='text/csv')
@@ -870,6 +936,7 @@ def download_auditor_template(request):
     return response
 
 @csrf_exempt
+@role_required('Admin')
 def bulk_upload_auditors(request):
     """Bulk import auditors from CSV with automatic login and password generation"""
     if request.method != 'POST':
@@ -956,6 +1023,7 @@ def bulk_upload_auditors(request):
         'skipped': skipped
     })
 
+@role_required()
 def export_department_excel(request):
     """Download department audit results and ATR in Excel-compatible CSV format"""
     dept_id = request.GET.get('department_id')
@@ -963,6 +1031,8 @@ def export_department_excel(request):
 
     if not dept_id or not cycle_id:
         return HttpResponse("department_id and cycle_id required", status=400)
+    if not can_view_department(request, dept_id):
+        return forbidden()
 
     dept = Department.objects.select_related('institute').filter(id=dept_id).first()
     cycle = AuditCycle.objects.filter(id=cycle_id).first()
@@ -1063,10 +1133,13 @@ def export_department_excel(request):
 
     return response
 
+@role_required()
 def export_department_pdf(request):
     """Download / printable formal PDF formatted report for department audit"""
     dept_id = request.GET.get('department_id')
     cycle_id = request.GET.get('cycle_id')
+    if not can_view_department(request, dept_id):
+        return forbidden()
 
     dept = Department.objects.select_related('institute').filter(id=dept_id).first()
     cycle = AuditCycle.objects.filter(id=cycle_id).first()

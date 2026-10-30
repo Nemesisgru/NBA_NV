@@ -74,6 +74,14 @@ code, pre, .font-mono {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -145,6 +153,7 @@ code, pre, .font-mono {
 
 /* Form inputs */
 input[type="text"],
+input[type="password"],
 input[type="number"],
 input[type="email"],
 input[type="date"],
@@ -159,6 +168,13 @@ textarea {
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
   width: 100%;
+}
+input:disabled, select:disabled, textarea:disabled,
+fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-secondary);
+  cursor: not-allowed;
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
