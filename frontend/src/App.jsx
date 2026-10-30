@@ -100,24 +100,24 @@ export default function App() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0b0f19',
-        color: '#f8fafc',
+        background: 'var(--bg-main)',
+        color: 'var(--text-primary)',
         gap: '16px'
       }}>
         <div style={{
           width: '54px',
           height: '54px',
           borderRadius: '12px',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%)',
+          background: 'linear-gradient(135deg, #F54927 0%, #f97316 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 8px 24px rgba(79, 70, 229, 0.4)'
+          boxShadow: '0 8px 24px rgba(245, 73, 39, 0.4)'
         }}>
           <Loader2 size={30} className="animate-spin" color="#fff" />
         </div>
         <h2 style={{ fontWeight: 800, fontSize: '1.25rem' }}>KRGI Academic Audit System</h2>
-        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading NBA Tier-I audit matrices and rubrics...</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Loading NBA Tier-I audit matrices and rubrics...</p>
       </div>
     );
   }
@@ -166,7 +166,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-primary)' }}>
       
       {/* Top Navbar */}
       <Navbar
@@ -190,13 +190,14 @@ export default function App() {
       {/* Role / Logged in contextual alert bar */}
       {currentUser && (
         <div style={{
-          background: currentUser.role === 'HOD' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          background: currentUser.role === 'HOD' ? 'rgba(245, 158, 11, 0.12)' : 'var(--primary-light)',
+          borderBottom: '1px solid var(--border-subtle)',
           padding: '8px 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          fontSize: '0.8rem'
+          fontSize: '0.8rem',
+          color: 'var(--text-primary)'
         }}>
           <div>
             {currentUser.role === 'HOD' ? (

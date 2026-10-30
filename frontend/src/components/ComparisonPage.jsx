@@ -72,26 +72,27 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
       
       {/* Header Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, #162032 0%, #0f172a 100%)',
-        border: '1px solid #223249',
+        background: 'var(--hero-gradient)',
+        border: '1px solid var(--hero-border)',
         borderRadius: '14px',
         padding: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '20px'
+        gap: '20px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-            <span className="badge" style={{ background: '#8b5cf6', color: '#fff', padding: '4px 10px', fontWeight: 800 }}>
+            <span className="badge" style={{ background: 'var(--primary)', color: '#fff', padding: '4px 10px', fontWeight: 800 }}>
               CROSS-DEPARTMENT BENCHMARKING
             </span>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               Academic Audit Results Comparison
             </h2>
           </div>
-          <p style={{ fontSize: '0.825rem', color: '#94a3b8' }}>
+          <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
             Multi-department side-by-side performance comparison across all 9 NBA criteria, grade distributions, and benchmark variance.
           </p>
         </div>
@@ -103,17 +104,18 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
 
       {/* Department Multi-Select Pill Box */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         padding: '16px 20px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px'
+        gap: '10px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-            SELECT DEPARTMENTS TO COMPARE (MAX {MAX_COMPARE}): <span style={{ color: '#a5b4fc' }}>{selectedDeptIds.length} / {MAX_COMPARE} selected</span>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+            SELECT DEPARTMENTS TO COMPARE (MAX {MAX_COMPARE}): <span style={{ color: 'var(--primary)' }}>{selectedDeptIds.length} / {MAX_COMPARE} selected</span>
           </div>
           {selectedDeptIds.length > 1 && (
             <button onClick={() => setSelectedDeptIds(selectedDeptIds.slice(0, 1))} className="btn btn-outline btn-sm">
@@ -234,18 +236,18 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
 
       {/* Visual Chart: Comparative Bar Chart per Criterion */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         padding: '20px',
         boxShadow: 'var(--shadow-card)'
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
           <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Criterion-by-Criterion Score Comparison (%)
             </h3>
-            <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
               Comparison across C1 (Curriculum) to C9 (Governance)
             </p>
           </div>
@@ -299,14 +301,14 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
 
       {/* Side-by-side Criteria Breakdown Table */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: 'var(--shadow-card)'
       }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e293b' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             Detailed Percentage & Grade Variance
           </h3>
         </div>

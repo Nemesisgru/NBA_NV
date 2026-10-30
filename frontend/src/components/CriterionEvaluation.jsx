@@ -300,19 +300,20 @@ export default function CriterionEvaluation({
                 gap: '8px',
                 padding: '8px 14px',
                 borderRadius: '8px',
-                border: isCurrent ? '1px solid #6366f1' : '1px solid #1e293b',
-                background: isCurrent ? 'rgba(99, 102, 241, 0.15)' : '#111827',
-                color: isCurrent ? '#a5b4fc' : '#94a3b8',
+                border: isCurrent ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
+                background: isCurrent ? 'var(--primary-light)' : 'var(--bg-surface)',
+                color: isCurrent ? 'var(--primary)' : 'var(--text-secondary)',
                 fontWeight: isCurrent ? 700 : 500,
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                transition: 'all 0.15s'
+                transition: 'all 0.15s',
+                boxShadow: isCurrent ? '0 2px 8px var(--primary-light)' : undefined
               }}
             >
               <span style={{ 
-                background: isCurrent ? '#4f46e5' : '#1e293b', 
-                color: '#fff', 
+                background: isCurrent ? 'var(--primary)' : 'var(--bg-card-hover)', 
+                color: isCurrent ? '#fff' : 'var(--text-secondary)', 
                 padding: '2px 6px', 
                 borderRadius: '4px',
                 fontSize: '0.75rem',
@@ -321,7 +322,7 @@ export default function CriterionEvaluation({
                 {c.code}
               </span>
               <span>{c.title}</span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({fmt2(c.max_marks)}M)</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({fmt2(c.max_marks)}M)</span>
               {userRole === 'Auditor' && isAllocated && (
                 <span title="Allocated to you" style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 700 }}>● yours</span>
               )}
@@ -332,8 +333,8 @@ export default function CriterionEvaluation({
 
       {/* Criterion Header Card */}
       <div style={{
-        background: 'linear-gradient(135deg, #162032 0%, #0f172a 100%)',
-        border: '1px solid #223249',
+        background: 'var(--hero-gradient)',
+        border: '1px solid var(--hero-border)',
         borderRadius: '14px',
         padding: '20px 24px',
         display: 'flex',
@@ -346,7 +347,7 @@ export default function CriterionEvaluation({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
             <span style={{ 
-              background: '#4f46e5', 
+              background: 'var(--primary)', 
               color: 'white', 
               fontWeight: 800, 
               padding: '4px 10px', 
@@ -355,31 +356,31 @@ export default function CriterionEvaluation({
             }}>
               {criterionData?.code || activeCriterionCode}
             </span>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {criterionData?.title}
             </h2>
           </div>
-          <p style={{ fontSize: '0.825rem', color: '#94a3b8', maxWidth: '700px' }}>
+          <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', maxWidth: '700px' }}>
             Physical validation rubrics and sample evaluation. Benchmark vs Validated values calculation, indicator scoring, and Action Taken Report (ATR) workflow.
           </p>
         </div>
 
         {/* Live Scorecards */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid #23344d' }}>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>MAX MARKS</div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#e2e8f0' }}>{summaryStats.max}</div>
+          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>MAX MARKS</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summaryStats.max}</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid #23344d' }}>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>VALIDATED</div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#818cf8' }}>{summaryStats.obt}</div>
+          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>VALIDATED</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary)' }}>{summaryStats.obt}</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid #23344d' }}>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>PERCENTAGE</div>
+          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PERCENTAGE</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{summaryStats.pct}%</div>
           </div>
           <div style={{ textAlign: 'center', padding: '0 12px' }}>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>GRADE</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>GRADE</div>
             <div className={`badge badge-${summaryStats.grade.toLowerCase()}`} style={{ fontSize: '1.1rem', padding: '4px 14px' }}>
               {summaryStats.grade}
             </div>
@@ -389,17 +390,17 @@ export default function CriterionEvaluation({
 
       {readOnly && !loading && (
         <div style={{
-          background: 'rgba(56, 189, 248, 0.08)',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
+          background: 'var(--primary-light)',
+          border: '1px solid var(--primary-border)',
           borderRadius: '10px',
           padding: '10px 16px',
           fontSize: '0.8rem',
-          color: '#bae6fd',
+          color: 'var(--text-primary)',
           display: 'flex',
           alignItems: 'center',
           gap: '8px'
         }}>
-          <Info size={15} />
+          <Info size={15} color="var(--primary)" />
           {userRole === 'HOD'
             ? <span>This is the auditor's report for your department (view-only). Indicators below 60% appear in the <strong>Action Taken Report</strong> tab, where you enter the root cause and action plan.</span>
             : <span>View-only: {activeCriterionCode} of this department is not allocated to you for this audit cycle.</span>}
@@ -416,20 +417,21 @@ export default function CriterionEvaluation({
       {/* Action Toolbar */}
       {showToolbar && (
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '10px',
         padding: '12px 18px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '12px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         {/* Search & Filters */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', width: '220px' }}>
-            <Search size={14} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+            <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '10px' }} />
             <input
               type="text"
               placeholder="Search aspect or code..."
@@ -440,8 +442,8 @@ export default function CriterionEvaluation({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Filter size={14} color="#94a3b8" />
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Grade:</span>
+            <Filter size={14} color="var(--text-secondary)" />
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Grade:</span>
             {['ALL', 'Y', 'C', 'W', 'D', 'UNSCORED'].map(g => (
               <button
                 key={g}
@@ -453,8 +455,8 @@ export default function CriterionEvaluation({
                   borderRadius: '4px',
                   border: 'none',
                   cursor: 'pointer',
-                  background: gradeFilter === g ? '#4f46e5' : '#1e293b',
-                  color: gradeFilter === g ? '#fff' : '#94a3b8'
+                  background: gradeFilter === g ? 'var(--primary)' : 'var(--bg-card-hover)',
+                  color: gradeFilter === g ? '#fff' : 'var(--text-secondary)'
                 }}
               >
                 {g}
@@ -557,8 +559,8 @@ export default function CriterionEvaluation({
 
       {/* Main Rubrics & Evaluation Data Table */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: 'var(--shadow-card)'
@@ -601,10 +603,10 @@ export default function CriterionEvaluation({
 
                 {visibleColumns.inputs && (
                   <>
-                    <th style={{ width: '85px', textAlign: 'center', background: '#192338' }}>Items Checked</th>
-                    <th style={{ width: '85px', textAlign: 'center', background: '#192338' }}>Valid Items</th>
-                    <th style={{ width: '80px', textAlign: 'center', background: '#192338' }}>Benchmark</th>
-                    <th style={{ width: '90px', textAlign: 'right', background: '#192338' }}>Validated Value</th>
+                    <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Items Checked</th>
+                    <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Valid Items</th>
+                    <th style={{ width: '80px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Benchmark</th>
+                    <th style={{ width: '90px', textAlign: 'right', background: 'var(--bg-table-header)' }}>Validated Value</th>
                   </>
                 )}
 
@@ -640,10 +642,10 @@ export default function CriterionEvaluation({
                     <tr key={item.id} className="header-row">
                       <td colSpan={20} style={{ padding: '10px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.9rem', color: '#e0e7ff', fontWeight: 700 }}>
+                          <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 700 }}>
                             {item.code} — {item.key_aspect}
                           </span>
-                          <span style={{ fontSize: '0.8rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--primary)', background: 'var(--primary-light)', border: '1px solid var(--primary-border)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
                             Sub-Total: {fmt2(item.max_marks)} Marks
                           </span>
                         </div>
@@ -660,7 +662,7 @@ export default function CriterionEvaluation({
                   <tr 
                     key={item.id} 
                     className={isSelected ? 'selected' : ''}
-                    style={{ background: isSaving ? 'rgba(99, 102, 241, 0.05)' : undefined }}
+                    style={{ background: isSaving ? 'var(--primary-light)' : undefined }}
                   >
                     {/* Row Select Checkbox (bulk actions live in the admin toolbar) */}
                     {showToolbar && (
@@ -675,17 +677,17 @@ export default function CriterionEvaluation({
                     )}
 
                     {/* Metric Code */}
-                    <td style={{ fontWeight: 700, color: '#a5b4fc' }}>
+                    <td style={{ fontWeight: 700, color: 'var(--primary)' }}>
                       {item.code}
                     </td>
 
                     {/* Key Aspect */}
                     <td>
-                      <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: '2px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
                         {item.key_aspect}
                       </div>
                       {item.auditor_verifies && (
-                        <div style={{ fontSize: '0.725rem', color: '#94a3b8' }}>
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
                           {item.auditor_verifies}
                         </div>
                       )}
@@ -694,16 +696,16 @@ export default function CriterionEvaluation({
                     {/* Sampling info */}
                     {visibleColumns.sampling && (
                       <>
-                        <td style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+                        <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           <div>{item.unit}</div>
                           {item.sampling_unit && (
-                            <div style={{ color: '#64748b' }}>Unit: {item.sampling_unit}</div>
+                            <div style={{ color: 'var(--text-muted)' }}>Unit: {item.sampling_unit}</div>
                           )}
                           {item.min_sample && (
-                            <div style={{ color: '#64748b' }}>Min: {item.min_sample}</div>
+                            <div style={{ color: 'var(--text-muted)' }}>Min: {item.min_sample}</div>
                           )}
                         </td>
-                        <td style={{ fontSize: '0.725rem', color: '#94a3b8' }}>
+                        <td style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
                           {item.valid_condition || item.how_to_sample || 'Verify compliant records.'}
                         </td>
                       </>
@@ -720,7 +722,7 @@ export default function CriterionEvaluation({
                     )}
 
                     {/* Max Marks */}
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#e2e8f0' }}>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
                       {fmt2(item.max_marks)}
                     </td>
 

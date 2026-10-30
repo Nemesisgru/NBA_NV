@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { ThemeProvider } from './context/ThemeContext'
 
 // Send the user back to the login page when the session expires mid-use
 const nativeFetch = window.fetch.bind(window)
@@ -16,6 +17,8 @@ window.fetch = async (...args) => {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 )

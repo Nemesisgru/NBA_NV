@@ -14,8 +14,8 @@ export default function CycleFilterBar({ cycles, selectedCycle, setSelectedCycle
 
   return (
     <div style={{
-      background: '#111827',
-      border: '1px solid #1e293b',
+      background: 'var(--bg-surface)',
+      border: '1px solid var(--border-subtle)',
       borderRadius: '10px',
       padding: '10px 18px',
       marginBottom: '20px',
@@ -23,12 +23,13 @@ export default function CycleFilterBar({ cycles, selectedCycle, setSelectedCycle
       alignItems: 'center',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
-      gap: '12px'
+      gap: '12px',
+      boxShadow: 'var(--shadow-card)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Filter size={14} color="#94a3b8" />
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Academic Year:</span>
+          <Filter size={14} color="var(--primary)" />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Academic Year:</span>
           <select
             value={current?.academic_year || ''}
             onChange={(e) => handleYearChange(e.target.value)}
@@ -41,8 +42,8 @@ export default function CycleFilterBar({ cycles, selectedCycle, setSelectedCycle
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Calendar size={14} color="#94a3b8" />
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Semester / Cycle:</span>
+          <Calendar size={14} color="var(--primary)" />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Semester / Cycle:</span>
           <select
             value={selectedCycle || ''}
             onChange={(e) => setSelectedCycle(Number(e.target.value))}
@@ -56,7 +57,15 @@ export default function CycleFilterBar({ cycles, selectedCycle, setSelectedCycle
       </div>
 
       {current && (
-        <span style={{ fontSize: '0.75rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.15)', padding: '3px 10px', borderRadius: '4px' }}>
+        <span style={{
+          fontSize: '0.75rem',
+          color: 'var(--primary)',
+          background: 'var(--primary-light)',
+          border: '1px solid var(--primary-border)',
+          padding: '3px 10px',
+          borderRadius: '4px',
+          fontWeight: 600
+        }}>
           Showing {tabLabel} for {current.academic_year} • {current.semester} ({current.cycle_type})
         </span>
       )}

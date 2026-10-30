@@ -102,26 +102,27 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
       
       {/* Header Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, #162032 0%, #0f172a 100%)',
-        border: '1px solid #223249',
+        background: 'var(--hero-gradient)',
+        border: '1px solid var(--hero-border)',
         borderRadius: '14px',
         padding: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '20px'
+        gap: '20px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-            <span className="badge" style={{ background: '#f59e0b', color: '#000', padding: '4px 10px', fontWeight: 800 }}>
+            <span className="badge" style={{ background: 'var(--primary)', color: '#fff', padding: '4px 10px', fontWeight: 800 }}>
               ATR MANAGEMENT PORTAL
             </span>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               Action Taken Report (ATR) Workspace
             </h2>
           </div>
-          <p style={{ fontSize: '0.825rem', color: '#94a3b8' }}>
+          <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
             Collaborative root-cause analysis and corrective planning. <strong>Any indicator scored below 60% (W/D) is automatically added to this ATR list.</strong>
           </p>
         </div>
@@ -170,15 +171,16 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
 
       {/* Filter Tabs */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '10px',
         padding: '12px 18px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '12px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
         {userRole === 'Admin' && (
@@ -262,8 +264,8 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
 
       {/* ATR Table */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: 'var(--shadow-card)'

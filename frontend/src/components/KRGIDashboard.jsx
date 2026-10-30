@@ -35,26 +35,27 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
       
       {/* Dashboard Header */}
       <div style={{
-        background: 'linear-gradient(135deg, #162032 0%, #0f172a 100%)',
-        border: '1px solid #223249',
+        background: 'var(--hero-gradient)',
+        border: '1px solid var(--hero-border)',
         borderRadius: '14px',
         padding: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '20px'
+        gap: '20px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-            <span className="badge" style={{ background: '#06b6d4', color: '#000', padding: '4px 10px', fontWeight: 800 }}>
+            <span className="badge" style={{ background: 'var(--primary)', color: '#fff', padding: '4px 10px', fontWeight: 800 }}>
               KRGI GROUP DASHBOARD
             </span>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               Academic Audit Cross-Department Analytics
             </h2>
           </div>
-          <p style={{ fontSize: '0.825rem', color: '#94a3b8' }}>
+          <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
             Multi-institutional comparison across KRCT, KRCE, and MKCE. Automatic grade rollup and criterion distribution.
           </p>
         </div>
@@ -74,8 +75,8 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
           <div
             key={inst.institute_code}
             style={{
-              background: '#162032',
-              border: '1px solid #243247',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: '14px',
               padding: '20px',
               boxShadow: 'var(--shadow-card)',
@@ -89,13 +90,13 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
               left: '0',
               right: '0',
               height: '4px',
-              background: inst.institute_code === 'KRCT' ? '#4f46e5' : (inst.institute_code === 'KRCE' ? '#06b6d4' : '#10b981')
+              background: inst.institute_code === 'KRCT' ? 'var(--primary)' : (inst.institute_code === 'KRCE' ? '#06b6d4' : '#10b981')
             }} />
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Building size={20} color="#818cf8" />
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc' }}>
+                <Building size={20} color="var(--primary)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                   {inst.institute_code}
                 </h3>
               </div>
@@ -104,19 +105,19 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
               </span>
             </div>
 
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               {inst.institute_name}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #23344d', paddingTop: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Departments Audited</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e2e8f0' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Departments Audited</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {inst.departments_audited} / {inst.total_departments}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Average Score</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Average Score</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>
                   {inst.average_pct}%
                 </div>
@@ -128,17 +129,17 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
 
       {/* Cross Department Matrix Table */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: 'var(--shadow-card)'
       }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             Comprehensive Department & Criteria Heatmap
           </h3>
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
             Click department to switch evaluation context
           </span>
         </div>

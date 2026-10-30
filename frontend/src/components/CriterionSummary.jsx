@@ -35,28 +35,29 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
       
       {/* Top Banner & Quick Controls */}
       <div style={{
-        background: 'linear-gradient(135deg, #162032 0%, #0f172a 100%)',
-        border: '1px solid #223249',
+        background: 'var(--hero-gradient)',
+        border: '1px solid var(--hero-border)',
         borderRadius: '14px',
         padding: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '20px'
+        gap: '20px',
+        boxShadow: 'var(--shadow-card)'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-            <span className="badge" style={{ background: '#4f46e5', color: 'white', padding: '4px 10px' }}>
+            <span className="badge" style={{ background: 'var(--primary)', color: 'white', padding: '4px 10px' }}>
               1000 MARKS EVALUATION
             </span>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               Criterion-Wise Executive Summary
             </h2>
           </div>
-          <p style={{ fontSize: '0.825rem', color: '#94a3b8' }}>
+          <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
             Consolidated NBA Tier-I audit performance across C1 to C9 for{' '}
-            <strong style={{ color: '#e2e8f0' }}>{data?.department?.institute} - {data?.department?.code}</strong> ({data?.cycle?.academic_year} {data?.cycle?.semester}).
+            <strong style={{ color: 'var(--text-primary)' }}>{data?.department?.institute} - {data?.department?.code}</strong> ({data?.cycle?.academic_year} {data?.cycle?.semester}).
           </p>
         </div>
 
@@ -142,8 +143,8 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
 
       {/* Criterion Summary Table */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: 'var(--shadow-card)'
@@ -168,11 +169,11 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
           <tbody>
             {rows.map(r => (
               <tr key={r.code}>
-                <td style={{ fontWeight: 800, color: '#818cf8' }}>{r.code}</td>
-                <td style={{ fontWeight: 600, color: '#f8fafc' }}>
+                <td style={{ fontWeight: 800, color: 'var(--primary)' }}>{r.code}</td>
+                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                   {r.title}
                   {/* Mini progress bar */}
-                  <div style={{ width: '100%', height: '4px', background: '#1e293b', borderRadius: '2px', marginTop: '6px' }}>
+                  <div style={{ width: '100%', height: '4px', background: 'var(--border-subtle)', borderRadius: '2px', marginTop: '6px' }}>
                     <div style={{
                       width: `${Math.min(r.percentage, 100)}%`,
                       height: '100%',

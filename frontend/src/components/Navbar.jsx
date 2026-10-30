@@ -3,6 +3,7 @@ import {
   Building2, Calendar, ShieldCheck, UserCheck, Layers,
   BarChart3, FileSpreadsheet, ExternalLink, Download, FileText, LogOut
 } from 'lucide-react';
+import ThemeToggle from './ThemeToggle';
 
 export default function Navbar({
   institutes,
@@ -32,12 +33,13 @@ export default function Navbar({
 
   return (
     <header style={{
-      background: 'rgba(17, 24, 39, 0.95)',
+      background: 'var(--bg-navbar)',
       backdropFilter: 'blur(10px)',
-      borderBottom: '1px solid #1f2d42',
+      borderBottom: '1px solid var(--border-navbar)',
       position: 'sticky',
       top: 0,
-      zIndex: 100
+      zIndex: 100,
+      transition: 'background-color 0.25s ease, border-color 0.25s ease'
     }}>
       {/* Top Banner */}
       <div style={{
@@ -45,7 +47,7 @@ export default function Navbar({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '12px 24px',
-        borderBottom: '1px solid #172338',
+        borderBottom: '1px solid var(--border-subtle)',
         flexWrap: 'wrap',
         gap: '12px'
       }}>
@@ -55,34 +57,34 @@ export default function Navbar({
             width: '42px',
             height: '42px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%)',
+            background: 'linear-gradient(135deg, #F54927 0%, #f97316 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)'
+            boxShadow: '0 4px 12px rgba(245, 73, 39, 0.4)'
           }}>
             <ShieldCheck size={26} color="#ffffff" />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em', color: '#f8fafc' }}>
+              <span style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
                 KRGI Academic Audit System
               </span>
-              <span className="badge" style={{ background: '#1e293b', color: '#818cf8', border: '1px solid #334155' }}>
+              <span className="badge" style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)', border: '1px solid var(--badge-border)' }}>
                 NBA Tier-I Aligned
               </span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
               K. Ramakrishnan Group of Institutions (KRCT • KRCE • MKCE)
             </div>
           </div>
         </div>
 
-        {/* Global Context Pickers */}
+        {/* Global Context Pickers and Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Institute Picker */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Building2 size={16} color="#94a3b8" />
+            <Building2 size={16} color="var(--text-secondary)" />
             <select
               value={selectedInstitute}
               onChange={(e) => {
@@ -101,7 +103,7 @@ export default function Navbar({
 
           {/* Department Picker */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Dept:</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Dept:</span>
             <select
               value={selectedDepartment || ''}
               onChange={(e) => setSelectedDepartment(Number(e.target.value))}
@@ -118,7 +120,7 @@ export default function Navbar({
 
           {/* Audit Cycle Picker */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={16} color="#94a3b8" />
+            <Calendar size={16} color="var(--text-secondary)" />
             <select
               value={selectedCycle || ''}
               onChange={(e) => setSelectedCycle(Number(e.target.value))}
@@ -155,20 +157,32 @@ export default function Navbar({
             </a>
           </div>
 
+          {/* Theme Toggle switch for logged-in sessions across all roles */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'var(--bg-card)',
+            padding: '4px 8px',
+            borderRadius: '8px',
+            border: '1px solid var(--border-subtle)'
+          }}>
+            <ThemeToggle id="navbar-theme-toggle" size="sm" showLabel={false} />
+          </div>
+
           {/* User Account / Role Badge */}
           {currentUser && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              background: '#1e293b',
+              background: 'var(--bg-card)',
               padding: '4px 10px',
               borderRadius: '8px',
-              border: '1px solid #334155'
+              border: '1px solid var(--border-subtle)'
             }}>
               <div style={{ fontSize: '0.75rem' }}>
-                <span style={{ color: '#818cf8', fontWeight: 700 }}>{currentUser.username}</span>
-                <span style={{ color: '#94a3b8' }}> ({currentUser.role})</span>
+                <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{currentUser.username}</span>
+                <span style={{ color: 'var(--text-secondary)' }}> ({currentUser.role})</span>
               </div>
               <button
                 onClick={onLogout}
@@ -202,7 +216,9 @@ export default function Navbar({
         gap: '4px',
         padding: '0 24px',
         overflowX: 'auto',
-        background: '#0f172a'
+        background: 'var(--bg-nav-tabs)',
+        borderBottom: '1px solid var(--border-navbar)',
+        transition: 'background-color 0.25s ease'
       }}>
         {[
           { id: 'criteria', label: isHod ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)', icon: Layers },
@@ -225,10 +241,10 @@ export default function Navbar({
                 padding: '12px 16px',
                 fontSize: '0.825rem',
                 fontWeight: isActive ? 700 : 500,
-                color: isActive ? '#818cf8' : '#94a3b8',
+                color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: isActive ? '3px solid #6366f1' : '3px solid transparent',
+                borderBottom: isActive ? '3px solid var(--primary)' : '3px solid transparent',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s ease'
