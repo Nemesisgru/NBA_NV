@@ -7,15 +7,16 @@ import ATRWorkspace from './components/ATRWorkspace';
 import AdminAllocation from './components/AdminAllocation';
 import ComparisonPage from './components/ComparisonPage';
 import AuditQuestionSetup from './components/AuditQuestionSetup';
+import AIAssistant from './components/AIAssistant';
 import CycleFilterBar from './components/CycleFilterBar';
 import LoginPage from './components/LoginPage';
 import { Loader2 } from 'lucide-react';
 
 // Tabs each role may open; the backend enforces the same limits on the API
 const ROLE_TABS = {
-  Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'questions', 'comparison'],
-  Auditor: ['criteria', 'summary', 'atr'],
-  HOD: ['criteria', 'summary', 'atr']
+  Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'questions', 'comparison', 'assistant'],
+  Auditor: ['criteria', 'summary', 'atr', 'assistant'],
+  HOD: ['criteria', 'summary', 'atr', 'assistant']
 };
 
 export default function App() {
@@ -153,17 +154,23 @@ export default function App() {
   };
 
   // Criterion question counts / max marks for the questions fixed in the selected cycle
-  const cycleTotals = bootstrap.cycles.find(c => c.id === selectedCycle)?.criteria_totals;
+  const currentCycle = bootstrap.cycles.find(c => c.id === selectedCycle);
+  const cycleTotals = currentCycle?.criteria_totals;
   const cycleCriteria = bootstrap.criteria.map(c => ({
     ...c,
     metric_count: cycleTotals ? (cycleTotals[c.code]?.metric_count || 0) : c.metric_count,
     max_marks: cycleTotals ? (cycleTotals[c.code]?.max_marks || 0) : c.max_marks
   }));
 
-  const handleQuestionsSaved = (cycleId, totals, fixed) => {
+  const handleQuestionsSaved = (cycleId, saved) => {
     setBootstrap(prev => ({
       ...prev,
-      cycles: prev.cycles.map(c => (c.id === cycleId ? { ...c, criteria_totals: totals, questions_fixed: fixed } : c))
+      cycles: prev.cycles.map(c => (c.id === cycleId ? {
+        ...c,
+        criteria_totals: saved.criteria_totals,
+        questions_fixed: saved.questions_fixed,
+        visible_columns: saved.visible_columns
+      } : c))
     }));
   };
 
@@ -260,6 +267,8 @@ export default function App() {
             departmentInfo={currentDept}
             userRole={userRole}
             editableCriteria={auditorCriteria}
+            visibleColumns={currentCycle?.visible_columns}
+            onColumnsSaved={handleQuestionsSaved}
             onNavigateToATR={() => setActiveTab('atr')}
           />
         )}
@@ -314,6 +323,17 @@ export default function App() {
           <AuditQuestionSetup
             selectedCycleId={selectedCycle}
             onSaved={handleQuestionsSaved}
+          />
+        )}
+
+        {currentTab === 'assistant' && (
+          <AIAssistant
+            selectedDepartmentId={selectedDepartment}
+            selectedCycleId={selectedCycle}
+            onOpenCriterion={(code) => {
+              setActiveCriterionCode(code);
+              setActiveTab('criteria');
+            }}
           />
         )}
 

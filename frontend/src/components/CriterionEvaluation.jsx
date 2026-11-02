@@ -4,6 +4,8 @@ import {
   ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2 
 } from 'lucide-react';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
+import ColumnPicker from './ColumnPicker';
+import { normalizeColumns, sameColumns } from '../auditColumns';
 
 // Round to at most two decimal places for display (trailing zeros dropped)
 const fmt2 = (v) => {
@@ -11,7 +13,7 @@ const fmt2 = (v) => {
   return isNaN(n) ? v : Math.round(n * 100) / 100;
 };
 
-// Roles that get the search / grade filter / column toggle toolbar (administrative tool)
+// Roles that get the search / grade filter toolbar (administrative tool)
 const TOOLBAR_ROLES = ['Admin'];
 
 // Restrict typed numeric input to at most two decimal places
@@ -30,6 +32,8 @@ export default function CriterionEvaluation({
   departmentInfo,
   userRole,
   editableCriteria,
+  visibleColumns,
+  onColumnsSaved,
   onNavigateToATR
 }) {
   const [criterionData, setCriterionData] = useState(null);
@@ -42,22 +46,38 @@ export default function CriterionEvaluation({
   const [searchQuery, setSearchQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState('ALL');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
-  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [savingId, setSavingId] = useState(null);
   const [lastSavedTime, setLastSavedTime] = useState(null);
 
-  // Column visibility controls with checkboxes
-  const [visibleColumns, setVisibleColumns] = useState({
-    sampling: true,
-    rubrics: false,
-    inputs: true,
-    results: true,
-    remarks: true,
-    evidence: true,
-    atrCheckbox: true,
-  });
+  // Columns fixed for this audit (Audit Questions tab). The server sends the current setting with every
+  // criterion it loads, so a change by the Admin applies without logging in again; for other logins the
+  // server also leaves out the data of hidden columns. The Admin can change the columns here for their own
+  // view and save them for all auditors of the audit.
+  const [serverColumns, setServerColumns] = useState(null);
+  const columnsKey = JSON.stringify(serverColumns || visibleColumns || null);
+  const auditColumns = useMemo(() => normalizeColumns(serverColumns || visibleColumns), [columnsKey]);
+  const [col, setCol] = useState(auditColumns);
+  const [columnSaveState, setColumnSaveState] = useState(null);
+  useEffect(() => { setCol(auditColumns); setColumnSaveState(null); }, [auditColumns, selectedCycleId]);
+  const columnsChanged = !sameColumns(col, auditColumns);
 
-  const [showColMenu, setShowColMenu] = useState(false);
+  const saveColumnsForAudit = async () => {
+    setColumnSaveState('saving');
+    try {
+      const res = await fetch('/api/cycle-questions/save/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cycle_id: selectedCycleId, visible_columns: col })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Save failed');
+      onColumnsSaved?.(selectedCycleId, json);
+      setColumnSaveState('saved');
+    } catch {
+      setColumnSaveState('error');
+    }
+  };
+
 
   // Fetch criterion metrics and evaluations
   const fetchCriterion = async () => {
@@ -69,6 +89,7 @@ export default function CriterionEvaluation({
       if (data.criterion) {
         setCriterionData(data.criterion);
         setMetrics(data.metrics || []);
+        if (data.visible_columns) setServerColumns(data.visible_columns);
       }
       setCanEdit(Boolean(data.can_edit));
     } catch (err) {
@@ -80,7 +101,6 @@ export default function CriterionEvaluation({
 
   useEffect(() => {
     fetchCriterion();
-    setSelectedRowIds(new Set());
   }, [activeCriterionCode, selectedDepartmentId, selectedCycleId]);
 
   // Recalculate local metric values
@@ -174,49 +194,6 @@ export default function CriterionEvaluation({
     }
   };
 
-  // Toggle row selection checkbox
-  const toggleRowSelect = (id) => {
-    setSelectedRowIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  // Select all rows
-  const toggleSelectAll = () => {
-    if (selectedRowIds.size === evaluableMetrics.length) {
-      setSelectedRowIds(new Set());
-    } else {
-      setSelectedRowIds(new Set(evaluableMetrics.map(m => m.id)));
-    }
-  };
-
-  // Bulk flag selected rows for ATR
-  const bulkFlagForATR = async () => {
-    if (selectedRowIds.size === 0) return;
-    setLoading(true);
-    for (const id of selectedRowIds) {
-      const m = metrics.find(item => item.id === id);
-      if (m) {
-        await fetch('/api/evaluations/save/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            department_id: selectedDepartmentId,
-            cycle_id: selectedCycleId,
-            metric_id: id,
-            items_checked: m.evaluation?.items_checked,
-            valid_items: m.evaluation?.valid_items,
-            is_flagged_for_atr: true
-          })
-        });
-      }
-    }
-    await fetchCriterion();
-    setLoading(false);
-  };
 
   const evaluableMetrics = useMemo(() => metrics.filter(m => !m.is_header), [metrics]);
 
@@ -342,26 +319,34 @@ export default function CriterionEvaluation({
           </p>
         </div>
 
-        {/* Live Scorecards */}
+        {/* Live Scorecards (for logins other than Admin, only those whose columns are shown in this audit) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>MAX MARKS</div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summaryStats.max}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>VALIDATED</div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary)' }}>{summaryStats.obt}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PERCENTAGE</div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{summaryStats.pct}%</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '0 12px' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>GRADE</div>
-            <div className={`badge badge-${summaryStats.grade.toLowerCase()}`} style={{ fontSize: '1.1rem', padding: '4px 14px' }}>
-              {summaryStats.grade}
+          {(showToolbar || auditColumns.maxMarks) && (
+            <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>MAX MARKS</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summaryStats.max}</div>
             </div>
-          </div>
+          )}
+          {(showToolbar || auditColumns.marksObtained) && (
+            <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>VALIDATED</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary)' }}>{summaryStats.obt}</div>
+            </div>
+          )}
+          {(showToolbar || (auditColumns.percentage && auditColumns.maxMarks && auditColumns.marksObtained)) && (
+            <div style={{ textAlign: 'center', padding: '0 12px', borderRight: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PERCENTAGE</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{summaryStats.pct}%</div>
+            </div>
+          )}
+          {(showToolbar || (auditColumns.grade && auditColumns.maxMarks && auditColumns.marksObtained)) && (
+            <div style={{ textAlign: 'center', padding: '0 12px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>GRADE</div>
+              <div className={`badge badge-${summaryStats.grade.toLowerCase()}`} style={{ fontSize: '1.1rem', padding: '4px 14px' }}>
+                {summaryStats.grade}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -441,80 +426,48 @@ export default function CriterionEvaluation({
             ))}
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.775rem', color: '#f59e0b', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={onlyFlagged}
-              onChange={(e) => setOnlyFlagged(e.target.checked)}
-            />
-            <span>Flagged for ATR only</span>
-          </label>
+          <button
+            onClick={() => setOnlyFlagged(!onlyFlagged)}
+            className="btn btn-sm"
+            style={{
+              borderRadius: '999px',
+              border: `1px solid ${onlyFlagged ? 'var(--grade-w)' : 'var(--border-subtle)'}`,
+              background: onlyFlagged ? 'var(--grade-w-bg)' : 'transparent',
+              color: onlyFlagged ? 'var(--grade-w)' : 'var(--text-secondary)'
+            }}
+            title="Show only the items flagged for the Action Taken Report"
+          >
+            <AlertTriangle size={13} /> Flagged for ATR only
+          </button>
         </div>
 
-        {/* Column Checkboxes & Bulk Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
-          {/* Column Toggle Menu Button */}
-          <button
-            onClick={() => setShowColMenu(!showColMenu)}
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Eye size={14} /> Columns Checkbox {showColMenu ? '▲' : '▼'}
-          </button>
-
-          {/* Column selector dropdown */}
-          {showColMenu && (
-            <div style={{
-              position: 'absolute',
-              top: '38px',
-              right: '0',
-              background: '#162032',
-              border: '1px solid #2d3f59',
-              borderRadius: '8px',
-              padding: '12px',
-              zIndex: 50,
-              width: '210px',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', borderBottom: '1px solid #23344d', paddingBottom: '4px' }}>
-                TOGGLE TABLE COLUMNS
-              </div>
-              {Object.keys(visibleColumns).map(colKey => {
-                const labels = {
-                  sampling: 'Sampling Guidelines',
-                  rubrics: 'Y/C/W/D Rubrics Text',
-                  inputs: 'Auditor Input (Checked/Valid)',
-                  results: 'Marks & Percentage',
-                  remarks: 'Auditor Remarks',
-                  evidence: 'Evidence & Physical Status',
-                  atrCheckbox: 'ATR Selection Checkbox'
-                };
-                return (
-                  <label key={colKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.775rem', color: '#e2e8f0', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns[colKey]}
-                      onChange={(e) => setVisibleColumns(prev => ({ ...prev, [colKey]: e.target.checked }))}
-                    />
-                    <span>{labels[colKey]}</span>
-                  </label>
-                );
-              })}
-            </div>
+        {/* Columns, refresh & save status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative', flexWrap: 'wrap' }}>
+          <ColumnPicker
+            value={col}
+            onChange={(next) => { setCol(next); setColumnSaveState(null); }}
+            title="COLUMNS IN THIS VIEW"
+            highlight={columnsChanged}
+            footer={'Changes apply to your view now. Use "Save for this audit" to show the same columns to every auditor in this audit.'}
+          />
+          {columnsChanged && (
+            <>
+              <button className="btn btn-primary btn-sm" onClick={saveColumnsForAudit} disabled={columnSaveState === 'saving'}
+                title="Save these columns for all auditors in this audit cycle">
+                <Save size={13} /> Save for this audit
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => setCol(auditColumns)} title="Back to the columns saved for this audit">
+                Undo
+              </button>
+            </>
           )}
-
-          {/* Bulk Action for selected rows */}
-          {!readOnly && selectedRowIds.size > 0 && (
-            <button
-              onClick={bulkFlagForATR}
-              className="btn btn-sm"
-              style={{ background: '#f59e0b', color: '#000', fontWeight: 700 }}
-            >
-              Flag {selectedRowIds.size} for ATR
-            </button>
+          {columnSaveState === 'saved' && !columnsChanged && (
+            <span style={{ fontSize: '0.725rem', color: 'var(--grade-y)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CheckCircle2 size={13} /> Columns saved for this audit
+            </span>
+          )}
+          {columnSaveState === 'error' && (
+            <span style={{ fontSize: '0.725rem', color: 'var(--grade-d)' }}>Could not save columns</span>
           )}
 
           <button
@@ -546,69 +499,34 @@ export default function CriterionEvaluation({
           <table className="audit-table">
             <thead>
               <tr>
-                {showToolbar && (
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedRowIds.size > 0 && selectedRowIds.size === evaluableMetrics.length}
-                      onChange={toggleSelectAll}
-                      disabled={readOnly}
-                      title="Select all rows"
-                    />
-                  </th>
-                )}
                 <th style={{ width: '70px' }}>Code</th>
                 <th style={{ minWidth: '220px' }}>Key Aspect & Indicator</th>
                 
-                {visibleColumns.sampling && (
-                  <>
-                    <th style={{ width: '100px' }}>Unit / Sample</th>
-                    <th style={{ minWidth: '180px' }}>Verification Rule</th>
-                  </>
-                )}
+                {col.unitSample && <th style={{ width: '100px' }}>Unit / Sample</th>}
+                {col.verificationRule && <th style={{ minWidth: '180px' }}>Verification Rule</th>}
 
-                {visibleColumns.rubrics && (
-                  <>
-                    <th style={{ minWidth: '150px' }}>Y Rubric (&gt;75%)</th>
-                    <th style={{ minWidth: '150px' }}>C Rubric (60-75%)</th>
-                    <th style={{ minWidth: '150px' }}>W Rubric (40-60%)</th>
-                    <th style={{ minWidth: '150px' }}>D Rubric (&lt;40%)</th>
-                  </>
-                )}
+                {col.rubricY && <th style={{ minWidth: '150px' }}>Y Rubric (&gt;75%)</th>}
+                {col.rubricC && <th style={{ minWidth: '150px' }}>C Rubric (60-75%)</th>}
+                {col.rubricW && <th style={{ minWidth: '150px' }}>W Rubric (40-60%)</th>}
+                {col.rubricD && <th style={{ minWidth: '150px' }}>D Rubric (&lt;40%)</th>}
 
-                <th style={{ width: '75px', textAlign: 'right' }}>Max Marks</th>
+                {col.maxMarks && <th style={{ width: '75px', textAlign: 'right' }}>Max Marks</th>}
 
-                {visibleColumns.inputs && (
-                  <>
-                    <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Items Checked</th>
-                    <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Valid Items</th>
-                    <th style={{ width: '80px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Benchmark</th>
-                    <th style={{ width: '90px', textAlign: 'right', background: 'var(--bg-table-header)' }}>Validated Value</th>
-                  </>
-                )}
+                {col.itemsChecked && <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Items Checked</th>}
+                {col.validItems && <th style={{ width: '85px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Valid Items</th>}
+                {col.benchmark && <th style={{ width: '80px', textAlign: 'center', background: 'var(--bg-table-header)' }}>Benchmark</th>}
+                {col.validatedValue && <th style={{ width: '90px', textAlign: 'right', background: 'var(--bg-table-header)' }}>Validated Value</th>}
 
-                {visibleColumns.results && (
-                  <>
-                    <th style={{ width: '90px', textAlign: 'right' }}>Marks Obt.</th>
-                    <th style={{ width: '75px', textAlign: 'right' }}>%</th>
-                    <th style={{ width: '70px', textAlign: 'center' }}>Grade</th>
-                  </>
-                )}
+                {col.marksObtained && <th style={{ width: '90px', textAlign: 'right' }}>Marks Obt.</th>}
+                {col.percentage && <th style={{ width: '75px', textAlign: 'right' }}>%</th>}
+                {col.grade && <th style={{ width: '70px', textAlign: 'center' }}>Grade</th>}
 
-                {visibleColumns.remarks && (
-                  <th style={{ minWidth: '180px' }}>Auditor Remarks</th>
-                )}
+                {col.remarks && <th style={{ minWidth: '180px' }}>Auditor Remarks</th>}
 
-                {visibleColumns.evidence && (
-                  <>
-                    <th style={{ width: '120px' }}>Evidence Status</th>
-                    <th style={{ width: '130px' }}>Physical Check</th>
-                  </>
-                )}
+                {col.evidenceStatus && <th style={{ width: '120px' }}>Evidence Status</th>}
+                {col.physicalCheck && <th style={{ width: '130px' }}>Physical Check</th>}
 
-                {visibleColumns.atrCheckbox && (
-                  <th style={{ width: '80px', textAlign: 'center' }}>Flag ATR</th>
-                )}
+                {col.atrFlag && <th style={{ width: '80px', textAlign: 'center' }}>Flag ATR</th>}
               </tr>
             </thead>
 
@@ -632,26 +550,13 @@ export default function CriterionEvaluation({
                 }
 
                 const ev = item.evaluation || {};
-                const isSelected = selectedRowIds.has(item.id);
                 const isSaving = savingId === item.id;
 
                 return (
-                  <tr 
-                    key={item.id} 
-                    className={isSelected ? 'selected' : ''}
+                  <tr
+                    key={item.id}
                     style={{ background: isSaving ? 'var(--primary-light)' : undefined }}
                   >
-                    {/* Row Select Checkbox (bulk actions live in the admin toolbar) */}
-                    {showToolbar && (
-                      <td style={{ textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRowSelect(item.id)}
-                          disabled={readOnly}
-                        />
-                      </td>
-                    )}
 
                     {/* Metric Code */}
                     <td style={{ fontWeight: 700, color: 'var(--primary)' }}>
@@ -671,8 +576,7 @@ export default function CriterionEvaluation({
                     </td>
 
                     {/* Sampling info */}
-                    {visibleColumns.sampling && (
-                      <>
+                    {col.unitSample && (
                         <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           <div>{item.unit}</div>
                           {item.sampling_unit && (
@@ -682,30 +586,28 @@ export default function CriterionEvaluation({
                             <div style={{ color: 'var(--text-muted)' }}>Min: {item.min_sample}</div>
                           )}
                         </td>
+                    )}
+                    {col.verificationRule && (
                         <td style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
                           {item.valid_condition || item.how_to_sample || 'Verify compliant records.'}
                         </td>
-                      </>
                     )}
 
                     {/* Rubrics descriptions */}
-                    {visibleColumns.rubrics && (
-                      <>
-                        <td style={{ fontSize: '0.7rem', color: '#10b981' }}>{item.rubric_Y || '-'}</td>
-                        <td style={{ fontSize: '0.7rem', color: '#3b82f6' }}>{item.rubric_C || '-'}</td>
-                        <td style={{ fontSize: '0.7rem', color: '#f59e0b' }}>{item.rubric_W || '-'}</td>
-                        <td style={{ fontSize: '0.7rem', color: '#ef4444' }}>{item.rubric_D || '-'}</td>
-                      </>
-                    )}
+                    {col.rubricY && <td style={{ fontSize: '0.7rem', color: 'var(--grade-y)' }}>{item.rubric_Y || '-'}</td>}
+                    {col.rubricC && <td style={{ fontSize: '0.7rem', color: 'var(--grade-c)' }}>{item.rubric_C || '-'}</td>}
+                    {col.rubricW && <td style={{ fontSize: '0.7rem', color: 'var(--grade-w)' }}>{item.rubric_W || '-'}</td>}
+                    {col.rubricD && <td style={{ fontSize: '0.7rem', color: 'var(--grade-d)' }}>{item.rubric_D || '-'}</td>}
 
                     {/* Max Marks */}
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {fmt2(item.max_marks)}
-                    </td>
+                    {col.maxMarks && (
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {fmt2(item.max_marks)}
+                      </td>
+                    )}
 
                     {/* Auditor Inputs */}
-                    {visibleColumns.inputs && (
-                      <>
+                    {col.itemsChecked && (
                         <td style={{ textAlign: 'center', background: 'rgba(255, 255, 255, 0.015)' }}>
                           <input
                             type="number"
@@ -724,6 +626,8 @@ export default function CriterionEvaluation({
                             placeholder="0"
                           />
                         </td>
+                    )}
+                    {col.validItems && (
                         <td style={{ textAlign: 'center', background: 'rgba(255, 255, 255, 0.015)' }}>
                           <input
                             type="number"
@@ -742,24 +646,30 @@ export default function CriterionEvaluation({
                             placeholder="0"
                           />
                         </td>
+                    )}
+                    {col.benchmark && (
                         <td style={{ textAlign: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>
                           {fmt2(item.benchmark)} {item.unit}
                         </td>
+                    )}
+                    {col.validatedValue && (
                         <td style={{ textAlign: 'right', fontWeight: 600, color: '#38bdf8' }}>
                           {ev.validated_value !== null && ev.validated_value !== undefined ? `${fmt2(ev.validated_value)} ${item.unit}` : '-'}
                         </td>
-                      </>
                     )}
 
                     {/* Calculated Results */}
-                    {visibleColumns.results && (
-                      <>
+                    {col.marksObtained && (
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>
                           {ev.marks_obtained !== null && ev.marks_obtained !== undefined ? fmt2(ev.marks_obtained) : '-'}
                         </td>
+                    )}
+                    {col.percentage && (
                         <td style={{ textAlign: 'right', fontWeight: 600, color: '#cbd5e1' }}>
                           {ev.percentage !== null && ev.percentage !== undefined ? `${fmt2(ev.percentage)}%` : '-'}
                         </td>
+                    )}
+                    {col.grade && (
                         <td style={{ textAlign: 'center' }}>
                           {ev.grade ? (
                             <span className={`badge badge-${ev.grade.toLowerCase()}`}>
@@ -769,11 +679,10 @@ export default function CriterionEvaluation({
                             <span style={{ color: '#64748b' }}>-</span>
                           )}
                         </td>
-                      </>
                     )}
 
                     {/* Remarks */}
-                    {visibleColumns.remarks && (
+                    {col.remarks && (
                       <td>
                         <input
                           type="text"
@@ -787,8 +696,7 @@ export default function CriterionEvaluation({
                     )}
 
                     {/* Evidence & Physical Status */}
-                    {visibleColumns.evidence && (
-                      <>
+                    {col.evidenceStatus && (
                         <td>
                           <select
                             value={ev.evidence_status || 'Complete'}
@@ -801,6 +709,8 @@ export default function CriterionEvaluation({
                             <option value="Not Uploaded">Not Uploaded</option>
                           </select>
                         </td>
+                    )}
+                    {col.physicalCheck && (
                         <td>
                           <select
                             value={ev.physical_check_result || 'Matches claim'}
@@ -814,11 +724,10 @@ export default function CriterionEvaluation({
                             <option value="Not checked">Not checked</option>
                           </select>
                         </td>
-                      </>
                     )}
 
                     {/* ATR Checkbox */}
-                    {visibleColumns.atrCheckbox && (
+                    {col.atrFlag && (
                       <td style={{ textAlign: 'center' }}>
                         <input
                           type="checkbox"

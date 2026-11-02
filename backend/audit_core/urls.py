@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .ai import views as ai_views
 
 urlpatterns = [
     path('bootstrap/', views.bootstrap_data, name='bootstrap_data'),
@@ -18,6 +19,15 @@ urlpatterns = [
     path('auditors/add/', views.add_auditor, name='add_auditor'),
     path('auditors/template/', views.download_auditor_template, name='download_auditor_template'),
     path('auditors/bulk-upload/', views.bulk_upload_auditors, name='bulk_upload_auditors'),
+    path('ai/status/', ai_views.ai_status, name='ai_status'),
+    path('ai/analytics/', ai_views.ai_analytics, name='ai_analytics'),
+    path('ai/chat/', ai_views.ai_chat, name='ai_chat'),
+    path('ai/messages/<int:message_id>/narrate/', ai_views.ai_message_narrate, name='ai_message_narrate'),
+    path('ai/conversations/', ai_views.ai_conversations, name='ai_conversations'),
+    path('ai/conversations/<int:conv_id>/', ai_views.ai_conversation_detail, name='ai_conversation_detail'),
+    path('ai/reports/', ai_views.ai_reports, name='ai_reports'),
+    path('ai/reports/<int:report_id>/', ai_views.ai_report_detail, name='ai_report_detail'),
+    path('ai/reports/<int:report_id>/download/<str:fmt>/', ai_views.ai_report_download, name='ai_report_download'),
     path('auth/login/', views.auth_login_view, name='auth_login_view'),
     path('auth/me/', views.auth_me_view, name='auth_me_view'),
     path('auth/logout/', views.auth_logout_view, name='auth_logout_view'),

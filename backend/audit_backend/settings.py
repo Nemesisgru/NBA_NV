@@ -119,3 +119,41 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Existing tables were created with BigAutoField ids; stating it keeps new migrations from altering them
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+def _env_bool(name, default):
+    return os.environ.get(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+# Local AI Audit Analytics Assistant (see README "AI Audit Assistant").
+# Everything here is server-controlled; users cannot change the model server or model.
+AUDIT_AI = {
+    'ENABLED': _env_bool('AUDIT_AI_ENABLED', True),
+    # Ollama must stay on this machine / private network; never expose it publicly
+    'OLLAMA_URL': os.environ.get('AUDIT_AI_OLLAMA_URL', 'http://127.0.0.1:11434'),
+    'MODEL': os.environ.get('AUDIT_AI_MODEL', 'qwen3.5:9b'),
+    'CONNECT_TIMEOUT': float(os.environ.get('AUDIT_AI_CONNECT_TIMEOUT', '3')),
+    'RESPONSE_TIMEOUT': float(os.environ.get('AUDIT_AI_RESPONSE_TIMEOUT', '300')),
+    'NUM_CTX': int(os.environ.get('AUDIT_AI_NUM_CTX', '4096')),
+    'NUM_PREDICT': int(os.environ.get('AUDIT_AI_NUM_PREDICT', '350')),
+    'MAX_CONCURRENCY': int(os.environ.get('AUDIT_AI_MAX_CONCURRENCY', '1')),
+    'KEEP_ALIVE': os.environ.get('AUDIT_AI_KEEP_ALIVE', '5m'),
+    # Per-user limits for expensive operations
+    'CHAT_LIMIT_PER_MINUTE': int(os.environ.get('AUDIT_AI_CHAT_LIMIT_PER_MINUTE', '6')),
+    'REPORT_LIMIT_PER_HOUR': int(os.environ.get('AUDIT_AI_REPORT_LIMIT_PER_HOUR', '10')),
+    # Generated reports are stored outside any served folder and downloaded through an authorised view
+    'REPORT_DIR': os.environ.get('AUDIT_AI_REPORT_DIR', str(BASE_DIR / 'generated_reports')),
+    'REPORT_RETENTION_DAYS': int(os.environ.get('AUDIT_AI_REPORT_RETENTION_DAYS', '30')),
+    'MAX_MESSAGE_CHARS': 1000,
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    # Operation names, timings and outcomes only; never prompts, audit content or model output
+    'loggers': {'audit_core.ai': {'handlers': ['console'], 'level': 'INFO'}},
+}

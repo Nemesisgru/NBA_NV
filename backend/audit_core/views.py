@@ -12,7 +12,10 @@ from .models import (
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
 )
 from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user
-from .question_scope import selected_metric_ids, cycle_metrics, is_metric_in_cycle, criteria_totals
+from .question_scope import (
+    selected_metric_ids, cycle_metrics, is_metric_in_cycle, criteria_totals, visible_columns, normalize_columns,
+    hidden_fields,
+)
 from .permissions import (
     HOD_ATR_FIELDS, AUDITOR_ATR_FIELDS, user_role, auditor_assignments, criteria_for,
     scoped_department_ids, can_view_department, can_edit_criterion, role_required, forbidden
@@ -153,10 +156,18 @@ def bootstrap_data(request):
     visible_institutes = {d['institute_code'] for d in departments}
     institutes = [i for i in Institute.objects.values('id', 'code', 'name') if is_admin or i['code'] in visible_institutes]
 
-    cycles = list(AuditCycle.objects.values('id', 'academic_year', 'cycle_type', 'semester', 'is_active', 'selected_metric_ids'))
-    for c in cycles:
-        c['questions_fixed'] = c.pop('selected_metric_ids') is not None
-        c['criteria_totals'] = criteria_totals(c['id'])
+    cycles = []
+    for cy in AuditCycle.objects.all():
+        cycles.append({
+            'id': cy.id,
+            'academic_year': cy.academic_year,
+            'cycle_type': cy.cycle_type,
+            'semester': cy.semester,
+            'is_active': cy.is_active,
+            'questions_fixed': cy.selected_metric_ids is not None,
+            'criteria_totals': criteria_totals(cy.id),
+            'visible_columns': visible_columns(cy),
+        })
     active_cycle = AuditCycle.objects.filter(is_active=True).first()
     if not active_cycle and cycles:
         active_cycle = AuditCycle.objects.first()
@@ -236,6 +247,8 @@ def criterion_detail(request, criterion_code):
             }
 
     fixed_ids = selected_metric_ids(cycle_id)
+    cycle_obj = AuditCycle.objects.filter(id=cycle_id).first() if cycle_id else None
+    hidden_metric, hidden_eval = hidden_fields(cycle_obj, request.role)
     items = []
     for m in crit.metrics.order_by('order').all():
         if fixed_ids is not None and not m.is_header and m.id not in fixed_ids:
@@ -259,8 +272,11 @@ def criterion_detail(request, criterion_code):
             'unit': m.unit,
             'max_marks': m.max_marks,
             'benchmark': m.benchmark,
-            'evaluation': ev
+            'evaluation': {k: v for k, v in ev.items() if k not in hidden_eval}
         })
+        if not m.is_header:
+            for f in hidden_metric:
+                items[-1].pop(f, None)
     # Section headers with no question left under them
     items = [m for i, m in enumerate(items)
              if not m['is_header'] or (i + 1 < len(items) and not items[i + 1]['is_header'])]
@@ -273,6 +289,8 @@ def criterion_detail(request, criterion_code):
             'order': crit.order
         },
         'can_edit': bool(dept_id and cycle_id) and can_edit_criterion(request, dept_id, cycle_id, crit.code),
+        'visible_columns': visible_columns(cycle_obj),
+        'columns_restricted': bool(hidden_metric or hidden_eval),
         'metrics': items
     })
 
@@ -306,6 +324,17 @@ def save_evaluation(request):
         return forbidden(f'{metric.criterion.code} of this department is not assigned to you for this audit cycle')
 
     settings = get_settings()
+
+    # Columns hidden for this audit cannot be changed by Auditors: keep the stored values
+    _, hidden_eval = hidden_fields(AuditCycle.objects.filter(id=cycle_id).first(), request.role)
+    if hidden_eval:
+        existing = AuditEvaluation.objects.filter(department_id=dept_id, cycle_id=cycle_id, metric=metric).first()
+        for f in ('items_checked', 'valid_items', 'auditor_remarks', 'evidence_status', 'physical_check_result', 'is_flagged_for_atr'):
+            if f in hidden_eval:
+                if existing is not None:
+                    data[f] = getattr(existing, f)
+                else:
+                    data.pop(f, None)
 
     items_checked = data.get('items_checked')
     valid_items = data.get('valid_items')
@@ -385,7 +414,7 @@ def save_evaluation(request):
 
     return JsonResponse({
         'status': 'success',
-        'evaluation': {
+        'evaluation': {k: v for k, v in {
             'id': eval_obj.id,
             'items_checked': eval_obj.items_checked,
             'valid_items': eval_obj.valid_items,
@@ -397,7 +426,7 @@ def save_evaluation(request):
             'evidence_status': eval_obj.evidence_status,
             'physical_check_result': eval_obj.physical_check_result,
             'is_flagged_for_atr': eval_obj.is_flagged_for_atr,
-        }
+        }.items() if k not in hidden_eval}
     })
 
 @role_required()
@@ -772,6 +801,7 @@ def cycle_questions(request):
     return JsonResponse({
         'cycle': {'id': cycle.id, 'name': str(cycle)},
         'questions_fixed': fixed_ids is not None,
+        'visible_columns': visible_columns(cycle),
         'departments_allocated': cycle.assignments.count(),
         'criteria': criteria,
     })
@@ -779,7 +809,8 @@ def cycle_questions(request):
 @csrf_exempt
 @role_required('Admin')
 def save_cycle_questions(request):
-    """Fix the questions of a cycle's audit for all auditors ({cycle_id, metric_ids} or {cycle_id, reset: true})"""
+    """Fix the questions ({metric_ids} or {reset: true}) and/or the evaluation table columns
+    ({visible_columns}) of a cycle's audit for all auditors"""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
     data = json.loads(request.body.decode('utf-8'))
@@ -787,20 +818,29 @@ def save_cycle_questions(request):
     if not cycle:
         return JsonResponse({'error': 'Audit cycle not found'}, status=404)
 
+    fields = []
+    if 'visible_columns' in data:
+        cycle.visible_columns = normalize_columns(data.get('visible_columns'))
+        fields.append('visible_columns')
     if data.get('reset'):
         cycle.selected_metric_ids = None
-    else:
+        fields.append('selected_metric_ids')
+    elif 'metric_ids' in data:
         requested = {int(i) for i in data.get('metric_ids', [])}
         valid = set(MetricItem.objects.filter(is_header=False, id__in=requested).values_list('id', flat=True))
         if not valid:
             return JsonResponse({'error': 'Select at least one question'}, status=400)
         cycle.selected_metric_ids = sorted(valid)
-    cycle.save(update_fields=['selected_metric_ids'])
+        fields.append('selected_metric_ids')
+    if not fields:
+        return JsonResponse({'error': 'Nothing to save'}, status=400)
+    cycle.save(update_fields=fields)
 
     totals = criteria_totals(cycle.id)
     return JsonResponse({
         'status': 'success',
         'questions_fixed': cycle.selected_metric_ids is not None,
+        'visible_columns': visible_columns(cycle),
         'question_count': sum(t['metric_count'] for t in totals.values()),
         'max_marks': round(sum(t['max_marks'] for t in totals.values()), 2),
         'criteria_totals': totals,

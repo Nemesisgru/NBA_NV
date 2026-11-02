@@ -9,36 +9,95 @@ Developed with:
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 Running the Project (every time you open it)
 
-### 1. Prerequisites
-- Python 3.10+ with the backend requirements installed (use a virtual environment for this project):
-  ```powershell
-  cd E:\NBA_NV\backend
-  python -m venv .venv
-  .\.venv\Scripts\Activate.ps1
-  pip install -r requirements.txt
-  ```
-- Node.js (A portable Node.js v20.18.0 environment is pre-configured in `tools/nodejs/`)
+The app has two parts:
 
-### 2. Start Backend Server
+| Part | Folder | Runs on | Needed |
+|---|---|---|---|
+| **Backend** (Django: API, database, login, and the built website) | `backend/` | http://127.0.0.1:8000 | **Always** |
+| **Frontend dev server** (Vite: live reload while editing React code) | `frontend/` | http://localhost:3000 | Only when you change frontend code |
+
+The backend alone is enough to use the website: it serves the compiled React app from `frontend/dist`.
+
+### First time only (one-time setup)
+Skip this if the project already runs on this computer.
+
+1. Install **Python 3.10+** (3.11 is used here) and **Node.js 20+**. Check in a terminal:
+   ```powershell
+   python --version
+   node --version
+   ```
+   If `node` is not found, use the portable copy in the project for that terminal:
+   `$env:PATH = "E:\NBA_NV\tools\nodejs;" + $env:PATH`
+2. Install the backend packages and update the database:
+   ```powershell
+   cd E:\NBA_NV\backend
+   pip install -r requirements.txt
+   python manage.py migrate
+   ```
+3. Install the frontend packages and build the website:
+   ```powershell
+   cd E:\NBA_NV\frontend
+   npm install
+   npm run build
+   ```
+
+### Every time: Option A – just use the website (one terminal)
+1. Open the project in VS Code and open a terminal: **Terminal → New Terminal** (or `` Ctrl+` ``).
+2. Start the backend:
+   ```powershell
+   cd E:\NBA_NV\backend
+   python manage.py runserver 127.0.0.1:8000
+   ```
+3. Wait until the terminal shows `Starting development server at http://127.0.0.1:8000/`.
+4. Open your browser (Chrome, Edge, Firefox) and go to **http://127.0.0.1:8000/**. The login page opens.
+   - Django Admin: http://127.0.0.1:8000/admin/
+5. **Keep this terminal open** while you use the website. Closing it (or pressing `Ctrl+C`) stops the server, and the website then shows *"Cannot reach the server. Make sure the Django backend is running."*
+
+### Every time: Option B – while editing frontend code (two terminals)
+1. **Terminal 1, backend:** same as Option A, steps 1–3:
+   ```powershell
+   cd E:\NBA_NV\backend
+   python manage.py runserver 127.0.0.1:8000
+   ```
+2. **Terminal 2, frontend:** open a second terminal with the **+** button in the terminal panel:
+   ```powershell
+   cd E:\NBA_NV\frontend
+   npm run dev
+   ```
+3. Wait for `Local: http://localhost:3000/`, then open **http://localhost:3000/** in your browser.
+   Changes you save in `frontend/src` appear in the browser immediately. The dev server forwards `/api` and `/admin` to the backend on port 8000, so **both terminals must stay open**.
+4. When you are done editing, build the website so the backend serves the new version on port 8000:
+   ```powershell
+   cd E:\NBA_NV\frontend
+   npm run build
+   ```
+
+### After pulling or receiving new code
+Run these once before starting the servers, in case the database or packages changed:
 ```powershell
 cd E:\NBA_NV\backend
-python manage.py runserver 127.0.0.1:8000
-```
-- **Web Application**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/) (opens the login page; serves the compiled React application and REST API)
-- **Django Admin Portal**: [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/)
-
-### 3. (Optional) Run React Frontend in Dev Mode
-If you want hot-module replacement during frontend development:
-```powershell
+python manage.py migrate
 cd E:\NBA_NV\frontend
-$env:PATH = "E:\NBA_NV\tools\nodejs;" + $env:PATH
-npm run dev
+npm install
+npm run build
 ```
-Access the dev server at: [http://localhost:3000/](http://localhost:3000/) (proxies API requests to port 8000).
 
-After changing frontend code, run `npm run build` so Django serves the new version from `frontend/dist`.
+### Stopping
+Click into each terminal and press `Ctrl+C`, or close the terminal.
+
+### Troubleshooting
+| Problem | Fix |
+|---|---|
+| Website says *"Cannot reach the server"* | The backend is not running. Start it (Option A, step 2) and refresh the page. |
+| `Error: That port is already in use` | A backend is already running (maybe in another terminal or window); use it, or close it first. To find it: `netstat -ano \| findstr :8000`, then `taskkill /PID <number> /F`. |
+| Page on port 8000 shows old screens after frontend changes | Run `npm run build` in `frontend/`, then refresh with `Ctrl+F5`. |
+| `python` or `npm` is not recognized | Reopen VS Code after installing Python / Node.js, or use the portable Node.js path shown in the first-time setup. |
+| `You have unapplied migration(s)` warning | Stop the backend, run `python manage.py migrate` in `backend/`, start it again. |
+| Login works but a tab is missing | Tabs depend on the role: Admin sees all tabs; Auditors and HODs see Criteria, Summary and ATR only. |
+
+> Use `127.0.0.1:8000` (or `localhost:3000` in dev mode). Opening `index.html` directly from the folder does not work, because the website needs the backend for login and data.
 
 ---
 
@@ -53,7 +112,7 @@ Everyone signs in on the **login page** that opens at `/`. The login is kept in 
 | Criterion Summary, Excel / PDF export | All departments | Allocated departments | Own department |
 | Action Taken Report | All fields, all departments | Auditor sign-off & feedback only | Root cause, action plan, target / completed date, evidence, status, HOD remarks |
 | KRGI Dashboard, Result Comparison | ✓ | – | – |
-| Auditor Allocation & Admin, Django Admin | ✓ | – | – |
+| Auditor Allocation & Admin, Audit Questions, Django Admin | ✓ | – | – |
 | Other users' login credentials | ✓ | – | – |
 
 Role checks live in `backend/audit_core/permissions.py`. Anonymous API calls get `401`; calls outside the user's role or departments get `403`.
@@ -135,18 +194,14 @@ Whenever an auditor enters evaluation items and the calculated score is **below 
 
 ---
 
-### 3. Rows & Columns Checkboxes
-*Admin only.* The evaluation toolbar (search, grade filter, "Flagged for ATR only", Columns Checkbox, refresh) and the row selection checkboxes are an administrative tool and are hidden for HODs and Auditors. Which roles get it is set by `TOOLBAR_ROLES` in `frontend/src/components/CriterionEvaluation.jsx`.
+### 3. Audit Questions & Evaluation Columns (per audit)
+*Admin only.* The **Audit Questions** tab fixes, for the audit cycle selected at the top, which questions of each criterion are part of the audit and which columns the evaluation table shows. Both apply to every auditor in that cycle; other cycles keep their own settings.
 
-- **Column Visibility Checkboxes**: Use the **"Columns Checkbox"** menu on the evaluation screen to toggle display of:
-  - Sampling Guidelines
-  - Rubrics Text (Y/C/W/D criteria)
-  - Auditor Inputs (Items Checked / Valid Items)
-  - Calculated Marks & Percentages
-  - Auditor Remarks
-  - Evidence & Physical Check Status
-  - ATR Flag Checkbox
-- **Row Selection Checkboxes**: Select rows individually or click **Select All** to perform bulk actions (e.g. bulk flagging for ATR or exporting).
+- **Questions**: tick questions individually or a whole criterion. Auditors only see and score the selected questions, and max marks, percentages, grades, the dashboard, comparison, exports and ATR count only those questions. Scores already entered for a removed question are kept and come back if it is selected again. A cycle with nothing saved uses all questions; **Reset to all** returns to that.
+- **Columns**: the **Columns** button chooses, column by column, what the evaluation table shows during the audit: Unit / Sample, Verification Rule, Y / C / W / D Rubric, Max Marks, Items Checked, Valid Items, Benchmark, Validated Value, Marks Obt., %, Grade, Auditor Remarks, Evidence Status, Physical Check and Flag ATR. Code and Key Aspect & Indicator are always shown. Hiding *Items Checked* or *Valid Items* stops auditors from entering scores (the page warns about this).
+- Click **Save changes** to apply both.
+
+On the evaluation screen the Admin also gets a toolbar (search, grade filter, *Flagged for ATR only*, **Columns**, refresh); HODs and Auditors do not. The Admin's **Columns** button changes the Admin's own view straight away; **Save for this audit** stores the same columns for every auditor of the selected cycle, and **Undo** goes back to the saved ones. Which roles get the toolbar is set by `TOOLBAR_ROLES` in `frontend/src/components/CriterionEvaluation.jsx`; the column list lives in `frontend/src/auditColumns.js` (kept in sync with `DEFAULT_COLUMNS` in `backend/audit_core/question_scope.py`).
 
 ---
 
@@ -201,10 +256,64 @@ Both HODs and Auditors can download complete department audit records for future
 
 ### 8. Results Comparison Page
 Compare audit results across departments:
-- Select up to 5 departments simultaneously using interactive multi-select pills.
+- Select up to 10 departments simultaneously using interactive multi-select pills.
 - Side-by-side KPI cards showing total score %, grade, and Y/C/W/D distribution.
 - Comparative SVG bar chart comparing percentage scores across Criteria 1 through 9.
 - Detailed criterion variance breakdown table.
+
+---
+
+### 9. Audit AI Assistant (local model, no paid services)
+Tab **AI Assistant** (Admin, Auditor, HOD). Answers questions about the audit data the user is allowed to see, lists missing evidence, pending / overdue corrective actions and findings, compares audit cycles and generates draft reports.
+
+**How it works**
+`logged-in user → Django access check (same rules as the rest of the app) → validated request → one of the registered analytics functions → verified figures → optional explanation by a local model (Ollama) → draft report`.
+- All figures are calculated by the application with the existing rules (marks formula, Y/C/W/D thresholds in *AuditSettings*, questions fixed per cycle). The model only explains them; it never reads the database, decides access, changes data, or approves anything.
+- Without Ollama (stopped, model missing, timeout) the assistant still shows all verified tables and still generates reports, with a note that the AI explanation is unavailable.
+- Scope (college / department / cycle) is taken from the selectors and checked on the server; IDs outside the user's access are rejected (403), never replaced.
+- Questions are matched to an operation by keyword rules first; only if none match does the model propose one, which is checked against an allowlist. The model cannot choose the college, department or cycle.
+- Explanations are plain text. References the model gives that are not in the verified data are removed, and numbers it states that are not in the data are flagged.
+- Chats and reports belong to the user who created them; nobody else (including other admins) can open them.
+
+**Definitions used** (shown under *How these figures are defined*): *submission completed* = the question has a grade; *evidence status* = what the auditor recorded (the app stores no evidence files); *evidence verified* = physical check "Matches claim"; *criterion compliant* = every question scored and criterion grade Y; *finding approved* = auditor sign-off on its ATR. Not configured in this application and reported as such: mandatory-evidence flags, per-action owners (the HOD is used), rubric versions.
+
+**Draft reports** (Word `.docx`, Excel `.xlsx`, PDF): one department and cycle, built from a single verified snapshot. Sections: scope, generation time and data timestamp, executive summary, data coverage and missing information, criterion-wise observations, evidence references (as text, never opened), methodology, historical comparison (only identical question sets are compared), existing corrective actions and separately labelled AI suggestions, limitations, and empty review / signature fields. Every page says **DRAFT - requires auditor review**. Files are stored in `backend/generated_reports/` (git-ignored, not web-served), downloadable only by their owner, and deleted after 30 days (`python manage.py cleanup_ai_reports`). Spreadsheet cells that start with `= + - @` are escaped.
+
+**Hardware and model (measured on this laptop)**: Intel i5-1235U, 16 GB RAM, no discrete GPU, so Ollama runs on the CPU. With the installed `qwen3.5:9b` (Apache-2.0, ~6.6 GB) an explanation took about **4–5 minutes** and interpreting a free-form question about 1 minute; verified figures appear instantly because the explanation is requested separately. The model needs about 7 GB of free RAM while loaded. For faster answers use a smaller model, e.g. `ollama pull qwen3:4b` (check its licence with `ollama show qwen3:4b --license`; not benchmarked here), then set `AUDIT_AI_MODEL`. Running the model costs electricity and machine time but no subscription.
+
+**Setup**
+```powershell
+# 1. Backend packages and database tables (adds python-docx; openpyxl and reportlab are used for Excel/PDF)
+cd E:\NBA_NV\backend
+pip install -r requirements.txt
+python manage.py migrate
+
+# 2. Ollama (free, local): install from https://ollama.com/download, then
+ollama --version
+ollama pull qwen3.5:9b            # or a smaller model, see above
+ollama show qwen3.5:9b --license  # confirm the licence fits your use
+ollama list
+
+# 3. Optional settings (defaults in backend/ai_assistant.env.example), in the same terminal:
+$env:AUDIT_AI_MODEL = "qwen3.5:9b"
+
+# 4. Start as usual
+python manage.py runserver 127.0.0.1:8000
+```
+Keep Ollama on `127.0.0.1` (its default). The server refuses Ollama URLs that are not local or private.
+
+**Verify**
+```powershell
+cd E:\NBA_NV\backend
+python manage.py test audit_core     # 30 tests, model mocked, synthetic data
+```
+Then log in, open **AI Assistant**, choose an audit cycle and click a starter question. To check the model alone: `ollama run qwen3.5:9b "Say OK"`.
+
+**Limitations**
+- Evidence *document* analysis is not available: the application stores no evidence files (only an auditor-recorded status and free-text references on ATRs), and references are never fetched.
+- Report jobs run in a background thread of the web server; a restart while one is running marks it failed after 30 minutes. Rate limits use Django's in-memory cache, so they are per server process.
+- The app's API, including the assistant, uses session login without CSRF tokens (existing convention).
+- Hiding columns in *Audit Questions* restricts the evaluation table only; the AI Assistant, Criterion Summary, ATR and exports still show scores to HODs/Auditors.
 
 ---
 
@@ -225,6 +334,15 @@ All endpoints except `auth/login` require a logged-in session. "Scoped" means no
 | `/api/comparison/` | `GET` | Admin | Multi-department criterion score comparison |
 | `/api/atr/` | `GET` | Any role, scoped | Action Taken Reports filtered by department, status, grade, institute or criterion |
 | `/api/atr/update/` | `POST` | Any role, scoped | HOD: root cause, plan, dates, evidence, status, remarks. Auditor: sign-off and feedback. Admin: all |
+| `/api/cycle-questions/` | `GET` | Admin | All questions of a cycle grouped by criterion, with the fixed selection and evaluation columns |
+| `/api/cycle-questions/save/` | `POST` | Admin | Saves a cycle's questions (`metric_ids` or `reset`) and/or `visible_columns` |
+| `/api/ai/status/` | `GET` | Any role, scoped | Local model availability and the user's selectable colleges, departments, cycles |
+| `/api/ai/analytics/` | `POST` | Any role, scoped | Runs one allowlisted analytics operation (no AI) |
+| `/api/ai/chat/` | `POST` | Any role, scoped | Question → validated operation → verified result (explanation requested separately) |
+| `/api/ai/messages/<id>/narrate/` | `POST` | Owner | Local-model explanation of a stored verified result |
+| `/api/ai/conversations/`, `/api/ai/conversations/<id>/` | `GET`, `DELETE` | Owner | Own conversations; delete = reset |
+| `/api/ai/reports/` | `GET`, `POST` | Owner, scoped | List own draft reports / start one (one department + cycle) |
+| `/api/ai/reports/<id>/`, `/api/ai/reports/<id>/download/<docx\|xlsx\|pdf>/` | `GET`, `DELETE` | Owner, scope re-checked | Report status / protected download |
 | `/api/assignments/` | `GET` | Admin | Auditor assignments with individual criteria allocations |
 | `/api/assignments/save/` | `POST` | Admin | Saves Lead/Second auditors and criteria per auditor |
 | `/api/departments/add/` | `POST` | Admin | Adds a department and provisions the HOD login |
@@ -256,9 +374,11 @@ E:\NBA_NV/
 │       ├── auth_utils.py             # Automatic username and password provisioning
 │       ├── permissions.py            # Role detection, department scoping & API access checks
 │       ├── views.py                  # REST API endpoints, Excel/PDF exports, & login
+│       ├── question_scope.py         # Questions and evaluation columns fixed per audit cycle
 │       ├── urls.py                   # App URL routes
 │       └── management/commands/
 │           ├── seed_audit_data.py    # Database seeder from Excel JSON
+│           ├── seed_test_audit.py    # Cross-college test audit (allocation, scores, ATR) for all departments
 │           └── provision_logins.py   # Bulk user account and password generator
 └── frontend/                         # React Frontend (Vite)
     ├── package.json
@@ -267,13 +387,16 @@ E:\NBA_NV/
     └── src/
         ├── index.css                 # Custom design system with HSL dark mode & glassmorphism
         ├── App.jsx                   # Session restore, role-based tabs & main application state
+        ├── hooks/
+        │   └── useSlidingIndicator.js # Sliding active-tab indicator used by the tab bars
         └── components/
             ├── LoginPage.jsx         # Full-screen sign-in page shown before the app
             ├── Navbar.jsx            # Header, context pickers, role-filtered tabs, logout & export buttons
-            ├── CriterionEvaluation.jsx # C1-C9 rubrics, live formulas, column & row checkboxes
+            ├── CriterionEvaluation.jsx # C1-C9 rubrics, live formulas, per-audit columns
             ├── CriterionSummary.jsx  # 1000-marks summary table & Excel/PDF downloads
             ├── KRGIDashboard.jsx     # KRGI cross-institutional matrix & heatmap
             ├── ATRWorkspace.jsx      # Action Taken Report workspace with <60% rule
             ├── AdminAllocation.jsx   # Individual criteria assignment & bulk upload modal
+            ├── AuditQuestionSetup.jsx # Admin: questions & evaluation columns per audit cycle
             └── ComparisonPage.jsx    # Side-by-side department analytics & bar charts
 ```

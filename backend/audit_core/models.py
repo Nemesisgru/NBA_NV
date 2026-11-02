@@ -57,6 +57,8 @@ class AuditCycle(models.Model):
     is_active = models.BooleanField(default=True)
     # Questions (MetricItem ids) fixed by the Admin for this audit; null means every question
     selected_metric_ids = models.JSONField(null=True, blank=True)
+    # Evaluation table columns shown during this audit ({column key: bool}); null means the defaults
+    visible_columns = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.academic_year} {self.semester} ({self.cycle_type})"
@@ -166,3 +168,54 @@ class AuditSettings(models.Model):
 
     def __str__(self):
         return "Audit Global Settings"
+
+
+# ---------------------------------------------------------------- AI Audit Assistant
+class AIConversation(models.Model):
+    """Assistant chat history. Visible to its owner only."""
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_conversations')
+    cycle = models.ForeignKey(AuditCycle, on_delete=models.SET_NULL, null=True, blank=True)
+    # Scope requested when the conversation was used (re-authorised on every request)
+    scope = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+
+class AIMessage(models.Model):
+    ROLES = [('user', 'user'), ('assistant', 'assistant')]
+    conversation = models.ForeignKey(AIConversation, on_delete=models.CASCADE, related_name='messages')
+    role = models.CharField(max_length=12, choices=ROLES)
+    content = models.TextField(blank=True)
+    operation = models.CharField(max_length=40, blank=True)
+    # Verified analytics result and validated narration (assistant messages)
+    result = models.JSONField(null=True, blank=True)
+    narration = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+
+class AIReport(models.Model):
+    """Draft audit report generated from a validated analytics snapshot. Never an approved report."""
+    STATUSES = [('pending', 'pending'), ('running', 'running'), ('done', 'done'), ('failed', 'failed')]
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_reports')
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+    cycle = models.ForeignKey(AuditCycle, on_delete=models.CASCADE)
+    compare_cycle = models.ForeignKey(AuditCycle, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    filters = models.JSONField(default=dict, blank=True)
+    include_narration = models.BooleanField(default=False)
+    # Rubric thresholds and question selection in force when the snapshot was taken
+    rubric_snapshot = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=10, choices=STATUSES, default='pending')
+    error = models.CharField(max_length=300, blank=True)
+    files = models.JSONField(default=dict, blank=True)  # {format: file name inside AUDIT_AI['REPORT_DIR']}
+    data_as_of = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']

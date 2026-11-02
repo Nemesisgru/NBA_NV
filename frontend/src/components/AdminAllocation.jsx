@@ -58,6 +58,11 @@ export default function AdminAllocation({
     }));
   };
 
+  // Update a plain field of a row (e.g. status)
+  const handleAssignmentChange = (deptId, field, value) => {
+    setAssignments(prev => prev.map(a => (a.department_id === deptId ? { ...a, [field]: value } : a)));
+  };
+
   // Toggle individual criterion for a specific auditor (Auditor 1 or Auditor 2)
   const toggleAuditorCriteria = (deptId, auditorNumber, critCode) => {
     const fieldName = auditorNumber === 1 ? 'auditor_1_criteria' : 'auditor_2_criteria';

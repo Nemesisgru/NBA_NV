@@ -4,3 +4,4 @@ __pycache__/
 node_modules/
 frontend/dist/
 login.md
+backend/generated_reports/

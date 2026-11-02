@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ListChecks, Save, RotateCcw, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import ColumnPicker from './ColumnPicker';
+import { TOGGLEABLE_COLUMNS, normalizeColumns, sameColumns, countShown } from '../auditColumns';
 
 // Round to at most two decimal places for display
 const fmt2 = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
 
-// Admin only: fix which questions of each criterion are part of the selected audit cycle.
-// The selection applies to every auditor and department allocated in that cycle.
+// Admin only: fix which questions of each criterion are part of the selected audit cycle, and which
+// evaluation table columns are shown during it. Both apply to every auditor allocated in that cycle.
 export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -15,6 +17,8 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [columns, setColumns] = useState({});
+  const [savedColumns, setSavedColumns] = useState({});
 
   const load = async () => {
     if (!selectedCycleId) return;
@@ -28,6 +32,8 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
       setData(json);
       setSelected(ids);
       setSavedSelection(ids);
+      setColumns(normalizeColumns(json.visible_columns));
+      setSavedColumns(normalizeColumns(json.visible_columns));
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
@@ -44,7 +50,10 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
   const totalMarks = allQuestions.reduce((s, m) => s + m.max_marks, 0);
   const selectedMarks = allQuestions.filter(m => selected.has(m.id)).reduce((s, m) => s + m.max_marks, 0);
 
-  const isDirty = selected.size !== savedSelection.size || [...selected].some(id => !savedSelection.has(id));
+  const questionsDirty = selected.size !== savedSelection.size || [...selected].some(id => !savedSelection.has(id));
+  const columnsDirty = !sameColumns(columns, savedColumns);
+  const isDirty = questionsDirty || columnsDirty;
+
   // Questions already scored in this audit that the new selection would leave out
   const droppedScored = allQuestions.filter(m => !selected.has(m.id) && savedSelection.has(m.id) && m.scored_departments > 0);
 
@@ -69,7 +78,7 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
       setMessage({ type: 'error', text: 'Select at least one question before saving.' });
       return;
     }
-    if (droppedScored.length > 0 && !reset && !window.confirm(
+    if (questionsDirty && droppedScored.length > 0 && !reset && !window.confirm(
       `${droppedScored.length} question(s) already scored in this audit will be left out of the scores and ATR. ` +
       'Their entries are kept and come back if you select the question again. Continue?'
     )) return;
@@ -80,17 +89,25 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
       const res = await fetch('/api/cycle-questions/save/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reset ? { cycle_id: selectedCycleId, reset: true } : { cycle_id: selectedCycleId, metric_ids: [...selected] })
+        body: JSON.stringify(reset
+          ? { cycle_id: selectedCycleId, reset: true }
+          : {
+              cycle_id: selectedCycleId,
+              visible_columns: columns,
+              // Only fix the question list when it was changed, so a column-only save keeps "all questions"
+              ...(questionsDirty ? { metric_ids: [...selected] } : {})
+            })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
-      onSaved?.(selectedCycleId, json.criteria_totals, json.questions_fixed);
+      onSaved?.(selectedCycleId, json);
       await load();
       setMessage({
         type: 'success',
         text: reset
           ? 'Reset: every question is part of this audit.'
-          : `Saved: ${json.question_count} questions (${fmt2(json.max_marks)} marks) fixed for all auditors in this audit.`
+          : `Saved for all auditors in this audit: ${json.question_count} questions (${fmt2(json.max_marks)} marks), ` +
+            `${countShown(normalizeColumns(json.visible_columns))} of ${TOGGLEABLE_COLUMNS.length} columns shown.`
       });
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
@@ -140,7 +157,7 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
             </span>
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Fix the questions of each criterion for <strong>{data.cycle.name}</strong>. The selection applies to all auditors
+            Fix the questions of each criterion and the evaluation columns for <strong>{data.cycle.name}</strong>. The selection applies to all auditors
             ({data.departments_allocated} departments allocated) and to scores, summaries, comparison, exports and ATR of this audit only.
           </p>
         </div>
@@ -178,6 +195,16 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
         <button className="btn btn-outline btn-sm" onClick={() => setExpanded(new Set(data.criteria.map(c => c.code)))}>Expand all</button>
         <button className="btn btn-outline btn-sm" onClick={() => setExpanded(new Set())}>Collapse all</button>
         <div style={{ flex: 1 }} />
+
+        {/* Columns shown to the auditors in the evaluation table */}
+        <ColumnPicker
+          value={columns}
+          onChange={setColumns}
+          title="COLUMNS SHOWN DURING THIS AUDIT"
+          highlight={columnsDirty}
+          footer="Click Save changes to apply to every auditor in this audit."
+        />
+
         {data.questions_fixed && (
           <button className="btn btn-secondary btn-sm" onClick={() => save(true)} disabled={saving} title="Use every question in this audit">
             <RotateCcw size={14} /> Reset to all
@@ -186,7 +213,7 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
         <button className="btn btn-primary" onClick={() => save(false)} disabled={saving || !isDirty}
           style={{ opacity: saving || !isDirty ? 0.6 : 1 }}>
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-          {isDirty ? 'Save selection' : 'Saved'}
+          {isDirty ? 'Save changes' : 'Saved'}
         </button>
       </div>
 
@@ -199,7 +226,15 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
           {message.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />} {message.text}
         </div>
       )}
-      {isDirty && droppedScored.length > 0 && (
+      {(!columns.itemsChecked || !columns.validItems) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8rem',
+          background: 'var(--grade-w-bg)', color: 'var(--grade-w)'
+        }}>
+          <AlertTriangle size={16} /> "{!columns.itemsChecked ? 'Items Checked' : 'Valid Items'}" is hidden: auditors will not be able to enter scores in this audit.
+        </div>
+      )}
+      {questionsDirty && droppedScored.length > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8rem',
           background: 'var(--grade-w-bg)', color: 'var(--grade-w)'

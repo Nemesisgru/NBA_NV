@@ -36,6 +36,7 @@ export default function Navbar({
     { id: 'allocations', label: 'Auditor Allocation & Admin' },
     { id: 'questions', label: 'Audit Questions' },
     { id: 'comparison', label: 'Result Comparison' },
+    { id: 'assistant', label: 'AI Assistant' },
   ].filter(tab => allowedTabs.includes(tab.id));
 
   // Sliding "magic" indicator: follows the active tab's position and width
