@@ -55,6 +55,8 @@ class AuditCycle(models.Model):
     cycle_type = models.CharField(max_length=20, choices=CYCLE_TYPES, default='Mid-Semester')
     semester = models.CharField(max_length=10, choices=SEMESTERS, default='Odd')
     is_active = models.BooleanField(default=True)
+    # Questions (MetricItem ids) fixed by the Admin for this audit; null means every question
+    selected_metric_ids = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.academic_year} {self.semester} ({self.cycle_type})"

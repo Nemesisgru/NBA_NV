@@ -12,6 +12,7 @@ from .models import (
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
 )
 from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user
+from .question_scope import selected_metric_ids, cycle_metrics, is_metric_in_cycle, criteria_totals
 from .permissions import (
     HOD_ATR_FIELDS, AUDITOR_ATR_FIELDS, user_role, auditor_assignments, criteria_for,
     scoped_department_ids, can_view_department, can_edit_criterion, role_required, forbidden
@@ -152,7 +153,10 @@ def bootstrap_data(request):
     visible_institutes = {d['institute_code'] for d in departments}
     institutes = [i for i in Institute.objects.values('id', 'code', 'name') if is_admin or i['code'] in visible_institutes]
 
-    cycles = list(AuditCycle.objects.values('id', 'academic_year', 'cycle_type', 'semester', 'is_active'))
+    cycles = list(AuditCycle.objects.values('id', 'academic_year', 'cycle_type', 'semester', 'is_active', 'selected_metric_ids'))
+    for c in cycles:
+        c['questions_fixed'] = c.pop('selected_metric_ids') is not None
+        c['criteria_totals'] = criteria_totals(c['id'])
     active_cycle = AuditCycle.objects.filter(is_active=True).first()
     if not active_cycle and cycles:
         active_cycle = AuditCycle.objects.first()
@@ -231,8 +235,11 @@ def criterion_detail(request, criterion_code):
                 'is_flagged_for_atr': ev.is_flagged_for_atr,
             }
 
+    fixed_ids = selected_metric_ids(cycle_id)
     items = []
     for m in crit.metrics.order_by('order').all():
+        if fixed_ids is not None and not m.is_header and m.id not in fixed_ids:
+            continue
         ev = eval_map.get(m.id, {})
         items.append({
             'id': m.id,
@@ -254,6 +261,9 @@ def criterion_detail(request, criterion_code):
             'benchmark': m.benchmark,
             'evaluation': ev
         })
+    # Section headers with no question left under them
+    items = [m for i, m in enumerate(items)
+             if not m['is_header'] or (i + 1 < len(items) and not items[i + 1]['is_header'])]
 
     return JsonResponse({
         'criterion': {
@@ -290,6 +300,8 @@ def save_evaluation(request):
         return JsonResponse({'error': 'Department not found'}, status=404)
     if not AuditCycle.objects.filter(id=cycle_id).exists():
         return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+    if not is_metric_in_cycle(metric, cycle_id):
+        return JsonResponse({'error': f'{metric.code} is not one of the questions fixed for this audit'}, status=400)
     if not can_edit_criterion(request, dept_id, cycle_id, metric.criterion.code):
         return forbidden(f'{metric.criterion.code} of this department is not assigned to you for this audit cycle')
 
@@ -416,7 +428,7 @@ def criterion_summary(request):
 
     criteria = Criterion.objects.order_by('order').all()
     for crit in criteria:
-        metric_items = crit.metrics.filter(is_header=False)
+        metric_items = cycle_metrics(cycle_id).filter(criterion=crit)
         c_max = sum(m.max_marks for m in metric_items)
         
         evals = AuditEvaluation.objects.filter(department_id=dept_id, cycle_id=cycle_id, metric__in=metric_items)
@@ -500,14 +512,15 @@ def dashboard_overview(request):
 
     criteria_list = list(Criterion.objects.order_by('order').values('code', 'title'))
 
+    metrics = cycle_metrics(cycle.id if cycle else None)
+    total_max = sum(m.max_marks for m in metrics)
+
     for inst in institutes:
         depts = inst.departments.all()
         dept_scores = []
 
         for d in depts:
-            evals = AuditEvaluation.objects.filter(department=d, cycle=cycle)
-            metrics = MetricItem.objects.filter(is_header=False)
-            total_max = sum(m.max_marks for m in metrics)
+            evals = AuditEvaluation.objects.filter(department=d, cycle=cycle, metric__in=metrics)
             total_obtained = sum(ev.marks_obtained for ev in evals if ev.marks_obtained is not None)
             pct = round((total_obtained / total_max) * 100, 2) if total_max > 0 else 0
             grade = calculate_grade(pct, settings) if evals.exists() else '-'
@@ -581,18 +594,18 @@ def comparison_view(request):
     radar_labels = [c.code for c in criteria]
 
     for dept in departments:
-        evals = AuditEvaluation.objects.filter(department=dept, cycle_id=cycle_id)
+        metrics = cycle_metrics(cycle_id)
+        evals = AuditEvaluation.objects.filter(department=dept, cycle_id=cycle_id, metric__in=metrics)
         crit_pcts = []
         for c in criteria:
-            c_metrics = MetricItem.objects.filter(criterion=c, is_header=False)
+            c_metrics = metrics.filter(criterion=c)
             c_max = sum(m.max_marks for m in c_metrics)
             c_evals = evals.filter(metric__criterion=c)
             c_obt = sum(ev.marks_obtained for ev in c_evals if ev.marks_obtained is not None)
             pct = round((c_obt / c_max) * 100, 1) if c_max > 0 else 0
             crit_pcts.append(pct)
 
-        total_metrics = MetricItem.objects.filter(is_header=False)
-        total_max = sum(m.max_marks for m in total_metrics)
+        total_max = sum(m.max_marks for m in metrics)
         total_obt = sum(ev.marks_obtained for ev in evals if ev.marks_obtained is not None)
         overall_pct = round((total_obt / total_max) * 100, 1) if total_max > 0 else 0
 
@@ -639,6 +652,9 @@ def atr_list(request):
         query = query.filter(evaluation__department_id=dept_id)
     if cycle_id:
         query = query.filter(evaluation__cycle_id=cycle_id)
+    # Hide ATRs of questions left out of their audit
+    for c in AuditCycle.objects.filter(selected_metric_ids__isnull=False).only('id', 'selected_metric_ids'):
+        query = query.exclude(Q(evaluation__cycle_id=c.id) & ~Q(evaluation__metric_id__in=c.selected_metric_ids))
     if status:
         query = query.filter(status=status)
     if grade:
@@ -725,6 +741,70 @@ def update_atr(request):
 
     atr.save()
     return JsonResponse({'status': 'success', 'atr_id': atr.id, 'new_status': atr.status})
+
+@role_required('Admin')
+def cycle_questions(request):
+    """Every question grouped by criterion, marked with whether it is part of the cycle's audit"""
+    cycle = AuditCycle.objects.filter(id=request.GET.get('cycle_id')).first()
+    if not cycle:
+        return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+
+    fixed_ids = None if cycle.selected_metric_ids is None else set(cycle.selected_metric_ids)
+    scored = dict(AuditEvaluation.objects.filter(cycle=cycle).exclude(grade='')
+                  .values_list('metric_id').annotate(n=Count('id')).values_list('metric_id', 'n'))
+
+    criteria = []
+    for crit in Criterion.objects.order_by('order').prefetch_related('metrics'):
+        items = []
+        for m in sorted(crit.metrics.all(), key=lambda x: x.order):
+            items.append({
+                'id': m.id,
+                'code': m.code,
+                'is_header': m.is_header,
+                'key_aspect': m.key_aspect,
+                'max_marks': m.max_marks,
+                'unit': m.unit,
+                'selected': (not m.is_header) and (fixed_ids is None or m.id in fixed_ids),
+                'scored_departments': scored.get(m.id, 0),
+            })
+        criteria.append({'code': crit.code, 'title': crit.title, 'metrics': items})
+
+    return JsonResponse({
+        'cycle': {'id': cycle.id, 'name': str(cycle)},
+        'questions_fixed': fixed_ids is not None,
+        'departments_allocated': cycle.assignments.count(),
+        'criteria': criteria,
+    })
+
+@csrf_exempt
+@role_required('Admin')
+def save_cycle_questions(request):
+    """Fix the questions of a cycle's audit for all auditors ({cycle_id, metric_ids} or {cycle_id, reset: true})"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    data = json.loads(request.body.decode('utf-8'))
+    cycle = AuditCycle.objects.filter(id=data.get('cycle_id')).first()
+    if not cycle:
+        return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+
+    if data.get('reset'):
+        cycle.selected_metric_ids = None
+    else:
+        requested = {int(i) for i in data.get('metric_ids', [])}
+        valid = set(MetricItem.objects.filter(is_header=False, id__in=requested).values_list('id', flat=True))
+        if not valid:
+            return JsonResponse({'error': 'Select at least one question'}, status=400)
+        cycle.selected_metric_ids = sorted(valid)
+    cycle.save(update_fields=['selected_metric_ids'])
+
+    totals = criteria_totals(cycle.id)
+    return JsonResponse({
+        'status': 'success',
+        'questions_fixed': cycle.selected_metric_ids is not None,
+        'question_count': sum(t['metric_count'] for t in totals.values()),
+        'max_marks': round(sum(t['max_marks'] for t in totals.values()), 2),
+        'criteria_totals': totals,
+    })
 
 @role_required('Admin')
 def assignments_list(request):
@@ -1065,7 +1145,7 @@ def export_department_excel(request):
     settings = get_settings()
 
     for c in criteria:
-        c_metrics = c.metrics.filter(is_header=False)
+        c_metrics = cycle_metrics(cycle.id).filter(criterion=c)
         m_max = sum(m.max_marks for m in c_metrics)
         evals = AuditEvaluation.objects.filter(department=dept, cycle=cycle, metric__in=c_metrics)
         m_obt = sum(e.marks_obtained for e in evals if e.marks_obtained is not None)
@@ -1090,7 +1170,7 @@ def export_department_excel(request):
     writer.writerow(['=== SECTION 2: DETAILED METRIC EVALUATIONS ==='])
     writer.writerow(['Criterion', 'Metric Code', 'Key Aspect', 'Max Marks', 'Items Checked', 'Valid Items', 'Benchmark', 'Validated Value', 'Marks Obtained', 'Percentage', 'Grade', 'Auditor Remarks', 'Evidence Status', 'Physical Check'])
     
-    evals_all = AuditEvaluation.objects.filter(department=dept, cycle=cycle).select_related('metric__criterion').order_by('metric__criterion__order', 'metric__order')
+    evals_all = AuditEvaluation.objects.filter(department=dept, cycle=cycle, metric__in=cycle_metrics(cycle.id)).select_related('metric__criterion').order_by('metric__criterion__order', 'metric__order')
     for ev in evals_all:
         m = ev.metric
         writer.writerow([
@@ -1115,7 +1195,8 @@ def export_department_excel(request):
     writer.writerow(['=== SECTION 3: ACTION TAKEN REPORT (ATR) - INDICATORS SCORED BELOW 60% ==='])
     writer.writerow(['Metric Code', 'Aspect', 'Score %', 'Grade', 'Root Cause Analysis', 'Corrective Action Plan', 'Target Date', 'Status', 'HOD Remarks', 'Auditor Sign-off'])
     
-    atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle).select_related('evaluation__metric')
+    atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle,
+                                            evaluation__metric__in=cycle_metrics(cycle.id)).select_related('evaluation__metric')
     for a in atrs:
         ev = a.evaluation
         writer.writerow([
@@ -1152,7 +1233,7 @@ def export_department_pdf(request):
     tot_max = tot_obt = tot_y = tot_c = tot_w = tot_d = 0
 
     for c in criteria:
-        c_metrics = c.metrics.filter(is_header=False)
+        c_metrics = cycle_metrics(cycle.id).filter(criterion=c)
         m_max = sum(m.max_marks for m in c_metrics)
         evals = AuditEvaluation.objects.filter(department=dept, cycle=cycle, metric__in=c_metrics)
         m_obt = sum(e.marks_obtained for e in evals if e.marks_obtained is not None)
@@ -1168,7 +1249,8 @@ def export_department_pdf(request):
     tot_pct = round((tot_obt / tot_max) * 100, 2) if tot_max > 0 else 0
     tot_grd = calculate_grade(tot_pct, settings)
 
-    atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle).select_related('evaluation__metric__criterion')
+    atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle,
+                                            evaluation__metric__in=cycle_metrics(cycle.id)).select_related('evaluation__metric__criterion')
 
     html = f"""<!DOCTYPE html>
 <html>

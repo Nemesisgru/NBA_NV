@@ -1,9 +1,9 @@
 import React from 'react';
 import {
-  Building2, Calendar, ShieldCheck, UserCheck, Layers,
-  BarChart3, FileSpreadsheet, ExternalLink, Download, FileText, LogOut
+  Building2, Calendar, ShieldCheck, UserCheck, ExternalLink, Download, FileText, LogOut
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import useSlidingIndicator from '../hooks/useSlidingIndicator';
 
 export default function Navbar({
   institutes,
@@ -27,6 +27,19 @@ export default function Navbar({
   );
   // An HOD is locked to their own department
   const isHod = userRole === 'HOD';
+
+  const tabs = [
+    { id: 'criteria', label: isHod ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)' },
+    { id: 'summary', label: 'Criterion Summary (1000M)' },
+    { id: 'dashboard', label: 'KRGI Dashboard' },
+    { id: 'atr', label: 'Action Taken Report (ATR)' },
+    { id: 'allocations', label: 'Auditor Allocation & Admin' },
+    { id: 'questions', label: 'Audit Questions' },
+    { id: 'comparison', label: 'Result Comparison' },
+  ].filter(tab => allowedTabs.includes(tab.id));
+
+  // Sliding "magic" indicator: follows the active tab's position and width
+  const { containerRef: navRef, itemRef, indicator } = useSlidingIndicator(activeTab, [allowedTabs.join(','), isHod]);
 
   const excelExportUrl = `/api/export/department-excel/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
   const pdfExportUrl = `/api/export/department-pdf/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
@@ -169,7 +182,20 @@ export default function Navbar({
             <ThemeToggle id="navbar-theme-toggle" size="sm" showLabel={false} />
           </div>
 
-          {/* User Account / Role Badge */}
+          {/* Django Admin Link */}
+          {userRole === 'Admin' && (
+            <a
+              href="/admin/"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+            >
+              <UserCheck size={14} /> Django Admin <ExternalLink size={12} />
+            </a>
+          )}
+
+          {/* User Account / Role Badge with Log out, kept last so it sits in the top right corner */}
           {currentUser && (
             <div style={{
               display: 'flex',
@@ -186,75 +212,46 @@ export default function Navbar({
               </div>
               <button
                 onClick={onLogout}
-                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                className="btn btn-sm"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'var(--grade-d)',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 700
+                }}
                 title="Log out"
               >
-                <LogOut size={14} />
+                <LogOut size={14} /> Log out
               </button>
             </div>
-          )}
-
-          {/* Django Admin Link */}
-          {userRole === 'Admin' && (
-            <a
-              href="/admin/"
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <UserCheck size={14} /> Django Admin <ExternalLink size={12} />
-            </a>
           )}
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <nav style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        padding: '0 24px',
-        overflowX: 'auto',
-        background: 'var(--bg-nav-tabs)',
-        borderBottom: '1px solid var(--border-navbar)',
-        transition: 'background-color 0.25s ease'
-      }}>
-        {[
-          { id: 'criteria', label: isHod ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)', icon: Layers },
-          { id: 'summary', label: 'Criterion Summary (1000M)', icon: FileSpreadsheet },
-          { id: 'dashboard', label: 'KRGI Dashboard', icon: BarChart3 },
-          { id: 'atr', label: 'Action Taken Report (ATR)', icon: ShieldCheck },
-          { id: 'allocations', label: 'Auditor Allocation & Admin', icon: UserCheck },
-          { id: 'comparison', label: 'Result Comparison', icon: BarChart3 },
-        ].filter(tab => allowedTabs.includes(tab.id)).map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 16px',
-                fontSize: '0.825rem',
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
+      {/* Navigation Tabs: words only, with a sliding curve-outside indicator */}
+      <nav
+        ref={navRef}
+        className="magic-nav"
+        style={{ background: 'var(--bg-nav-tabs)', transition: 'background-color 0.25s ease' }}
+      >
+        {indicator && (
+          <div className="magic-nav-indicator" style={{ left: indicator.left, width: indicator.width }}>
+            <span />
+          </div>
+        )}
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            ref={itemRef(tab.id)}
+            onClick={() => setActiveTab(tab.id)}
+            className={`magic-nav-item${activeTab === tab.id ? ' active' : ''}`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
     </header>

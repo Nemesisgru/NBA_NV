@@ -142,9 +142,9 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                   fontSize: '0.8rem',
                   fontWeight: isSelected ? 700 : 500,
                   cursor: 'pointer',
-                  border: isSelected ? `2px solid ${activeColor}` : '1px solid #243247',
-                  background: isSelected ? 'rgba(255, 255, 255, 0.05)' : '#0f172a',
-                  color: isSelected ? '#f8fafc' : '#94a3b8',
+                  border: isSelected ? `2px solid ${activeColor}` : '1px solid var(--border-input)',
+                  background: isSelected ? `${activeColor}14` : 'var(--bg-input)',
+                  color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -152,7 +152,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  background: isSelected ? activeColor : '#334155'
+                  background: isSelected ? activeColor : 'var(--border-input)'
                 }} />
                 <span>{d.institute_code} - {d.code}</span>
               </button>
@@ -173,7 +173,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
             <div
               key={d.department_id}
               style={{
-                background: '#162032',
+                background: 'var(--bg-card)',
                 border: `1px solid ${color}40`,
                 borderRadius: '12px',
                 padding: '18px',
@@ -185,7 +185,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: color }} />
               
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontWeight: 800, fontSize: n > 5 ? '0.95rem' : '1.1rem', color: '#f8fafc' }}>
+                <span style={{ fontWeight: 800, fontSize: n > 5 ? '0.95rem' : '1.1rem', color: 'var(--text-primary)' }}>
                   {d.label}
                 </span>
                 <span className={`badge badge-${(d.overall_grade || 'd').toLowerCase()}`}>
@@ -197,7 +197,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                 <span style={{ fontSize: n > 5 ? '1.6rem' : '2rem', fontWeight: 800, color: color }}>
                   {d.overall_pct}%
                 </span>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Overall Score</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overall Score</span>
               </div>
 
               {/* Indicator Distribution */}
@@ -205,7 +205,8 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                 display: 'grid',
                 gridTemplateColumns: 'repeat(4, 1fr)',
                 gap: '4px',
-                background: '#0f172a',
+                background: 'var(--bg-card-hover)',
+                border: '1px solid var(--border-subtle)',
                 padding: '8px',
                 borderRadius: '8px',
                 textAlign: 'center',
@@ -213,20 +214,20 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                 marginTop: '12px'
               }}>
                 <div>
-                  <div style={{ color: '#10b981', fontWeight: 800 }}>{d.grade_counts.Y}</div>
-                  <div style={{ color: '#64748b' }}>Y</div>
+                  <div style={{ color: 'var(--grade-y)', fontWeight: 800 }}>{d.grade_counts.Y}</div>
+                  <div style={{ color: 'var(--text-muted)' }}>Y</div>
                 </div>
                 <div>
-                  <div style={{ color: '#3b82f6', fontWeight: 800 }}>{d.grade_counts.C}</div>
-                  <div style={{ color: '#64748b' }}>C</div>
+                  <div style={{ color: 'var(--grade-c)', fontWeight: 800 }}>{d.grade_counts.C}</div>
+                  <div style={{ color: 'var(--text-muted)' }}>C</div>
                 </div>
                 <div>
-                  <div style={{ color: '#f59e0b', fontWeight: 800 }}>{d.grade_counts.W}</div>
-                  <div style={{ color: '#64748b' }}>W</div>
+                  <div style={{ color: 'var(--grade-w)', fontWeight: 800 }}>{d.grade_counts.W}</div>
+                  <div style={{ color: 'var(--text-muted)' }}>W</div>
                 </div>
                 <div>
-                  <div style={{ color: '#ef4444', fontWeight: 800 }}>{d.grade_counts.D}</div>
-                  <div style={{ color: '#64748b' }}>D</div>
+                  <div style={{ color: 'var(--grade-d)', fontWeight: 800 }}>{d.grade_counts.D}</div>
+                  <div style={{ color: 'var(--text-muted)' }}>D</div>
                 </div>
               </div>
             </div>
@@ -256,7 +257,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
             {comparedDepts.map(d => (
               <div key={d.department_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
                 <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: colorOf(d.department_id) }} />
-                <span style={{ color: '#cbd5e1' }}>{d.label}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{d.label}</span>
               </div>
             ))}
           </div>
@@ -265,7 +266,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
         {/* Custom Responsive SVG Chart */}
         <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '10px' }}>
           {/* Each criterion group gets ~14px per bar so 10 departments stay readable; scrolls on narrow screens */}
-          <div style={{ minWidth: `${Math.max(700, criteria.length * (n * 14 + 20))}px`, height: '260px', display: 'flex', alignItems: 'flex-end', gap: n > 5 ? '10px' : '16px', borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
+          <div style={{ minWidth: `${Math.max(700, criteria.length * (n * 14 + 20))}px`, height: '260px', display: 'flex', alignItems: 'flex-end', gap: n > 5 ? '10px' : '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
             {criteria.map((c, cIdx) => (
               <div key={c.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
                 <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: n > 5 ? '2px' : '4px', height: '200px' }}>
@@ -290,7 +291,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                     );
                   })}
                 </div>
-                <div style={{ marginTop: '8px', fontSize: '0.75rem', fontWeight: 700, color: '#e2e8f0' }}>
+                <div style={{ marginTop: '8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {c.code}
                 </div>
               </div>
@@ -329,8 +330,8 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
             <tbody>
               {criteria.map((c, cIdx) => (
                 <tr key={c.code}>
-                  <td style={{ fontWeight: 800, color: '#818cf8' }}>{c.code}</td>
-                  <td style={{ fontWeight: 600, color: '#f8fafc' }}>{c.title}</td>
+                  <td style={{ fontWeight: 800, color: 'var(--primary)' }}>{c.code}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.title}</td>
                   {comparedDepts.map(d => {
                     const score = d.scores[cIdx] || 0;
                     const grade = score > 75 ? 'Y' : (score >= 60 ? 'C' : (score >= 40 ? 'W' : 'D'));

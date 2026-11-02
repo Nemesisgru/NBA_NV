@@ -6,13 +6,14 @@ import KRGIDashboard from './components/KRGIDashboard';
 import ATRWorkspace from './components/ATRWorkspace';
 import AdminAllocation from './components/AdminAllocation';
 import ComparisonPage from './components/ComparisonPage';
+import AuditQuestionSetup from './components/AuditQuestionSetup';
 import CycleFilterBar from './components/CycleFilterBar';
 import LoginPage from './components/LoginPage';
 import { Loader2 } from 'lucide-react';
 
 // Tabs each role may open; the backend enforces the same limits on the API
 const ROLE_TABS = {
-  Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'comparison'],
+  Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'questions', 'comparison'],
   Auditor: ['criteria', 'summary', 'atr'],
   HOD: ['criteria', 'summary', 'atr']
 };
@@ -147,7 +148,23 @@ export default function App() {
     summary: 'criterion summary',
     dashboard: 'KRGI dashboard',
     atr: 'action taken reports',
-    allocations: 'auditor allocations'
+    allocations: 'auditor allocations',
+    questions: 'audit questions'
+  };
+
+  // Criterion question counts / max marks for the questions fixed in the selected cycle
+  const cycleTotals = bootstrap.cycles.find(c => c.id === selectedCycle)?.criteria_totals;
+  const cycleCriteria = bootstrap.criteria.map(c => ({
+    ...c,
+    metric_count: cycleTotals ? (cycleTotals[c.code]?.metric_count || 0) : c.metric_count,
+    max_marks: cycleTotals ? (cycleTotals[c.code]?.max_marks || 0) : c.max_marks
+  }));
+
+  const handleQuestionsSaved = (cycleId, totals, fixed) => {
+    setBootstrap(prev => ({
+      ...prev,
+      cycles: prev.cycles.map(c => (c.id === cycleId ? { ...c, criteria_totals: totals, questions_fixed: fixed } : c))
+    }));
   };
 
   const handleDepartmentAdded = (newDept) => {
@@ -166,7 +183,13 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-primary)' }}>
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-primary)',
+      // Solid colour of the strip under the navbar (role bar, or the page for Admin); the active tab blends into it
+      '--nav-join-bg': userRole === 'HOD'
+        ? 'linear-gradient(rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.12)), var(--bg-main)'
+        : userRole === 'Auditor' ? 'linear-gradient(var(--primary-light), var(--primary-light)), var(--bg-main)' : 'var(--bg-main)'
+    }}>
       
       {/* Top Navbar */}
       <Navbar
@@ -187,10 +210,10 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      {/* Role / Logged in contextual alert bar */}
-      {currentUser && (
+      {/* Role / Logged in contextual alert bar (HOD and Auditor only) */}
+      {(userRole === 'HOD' || userRole === 'Auditor') && (
         <div style={{
-          background: currentUser.role === 'HOD' ? 'rgba(245, 158, 11, 0.12)' : 'var(--primary-light)',
+          background: 'var(--nav-join-bg)',
           borderBottom: '1px solid var(--border-subtle)',
           padding: '8px 24px',
           display: 'flex',
@@ -204,25 +227,15 @@ export default function App() {
               <span>
                 🏛️ Logged in as <strong>Head of Department ({currentUser.hod_info?.institute_code} - {currentUser.hod_info?.department_code})</strong>. The auditor's report is view-only; enter your root cause and action plan in the Action Taken Report.
               </span>
-            ) : currentUser.role === 'Auditor' ? (
+            ) : (
               <span>
                 🔍 Logged in as <strong>{currentUser.auditor_info?.name}</strong>.{' '}
                 {auditorCriteria.length > 0
                   ? <>You can evaluate <strong>{auditorCriteria.join(', ')}</strong> for this department; other criteria are view-only.</>
                   : <>You have no criteria allocated for this department in the selected cycle (view-only).</>}
               </span>
-            ) : (
-              <span>
-                👑 Logged in as <strong>Administrator</strong>. Full audit governance access.
-              </span>
             )}
           </div>
-          <button
-            onClick={handleLogout}
-            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem' }}
-          >
-            Log out
-          </button>
         </div>
       )}
 
@@ -239,7 +252,7 @@ export default function App() {
 
         {currentTab === 'criteria' && (
           <CriterionEvaluation
-            criteriaList={bootstrap.criteria}
+            criteriaList={cycleCriteria}
             activeCriterionCode={activeCriterionCode}
             setActiveCriterionCode={setActiveCriterionCode}
             selectedDepartmentId={selectedDepartment}
@@ -294,6 +307,13 @@ export default function App() {
             criteriaList={bootstrap.criteria}
             onDepartmentAdded={handleDepartmentAdded}
             onAuditorAdded={handleAuditorAdded}
+          />
+        )}
+
+        {currentTab === 'questions' && (
+          <AuditQuestionSetup
+            selectedCycleId={selectedCycle}
+            onSaved={handleQuestionsSaved}
           />
         )}
 

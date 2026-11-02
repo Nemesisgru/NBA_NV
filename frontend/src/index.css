@@ -25,10 +25,23 @@
   --grade-d: #ef4444;
   --grade-d-bg: rgba(239, 68, 68, 0.15);
   
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
   --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* Secondary accent (emerald) and component tokens */
+  --accent: #34d399;
+  --accent-hover: #6ee7b7;
+  --accent-light: rgba(52, 211, 153, 0.14);
+  --nav-tab-text: #94a3b8;
+  --nav-tab-text-hover: #f8fafc;
+  --seg-track: #0f172a;
+  --seg-active-bg: linear-gradient(135deg, #F54927 0%, #ea580c 100%);
+  --seg-active-text: #ffffff;
+  --seg-active-shadow: 0 6px 16px -6px rgba(245, 73, 39, 0.6);
+  --scroll-thumb: #2a374a;
+  --focus-ring: rgba(248, 93, 63, 0.28);
 
   --bg-input: #0f172a;
   --border-input: #243247;
@@ -50,50 +63,65 @@
 }
 
 [data-theme="light"] {
-  --bg-main: #fbf9f8;
+  --bg-main: #f6f7f4;
   --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #fff5f2;
-  --border-subtle: #ebdcd7;
-  --text-primary: #09090b;
-  --text-secondary: #27272a;
-  --text-muted: #475569;
+  --bg-card-hover: #f1f6f2;
+  --border-subtle: #e3e8e2;
+  --border-focus: #F54927;
+  --text-primary: #0b1410;
+  --text-secondary: #2a3530;
+  --text-muted: #5b6b62;
   --primary: #F54927;
   --primary-hover: #dc3b19;
-  --primary-light: rgba(245, 73, 39, 0.10);
+  --primary-light: rgba(245, 73, 39, 0.09);
   --primary-border: rgba(245, 73, 39, 0.30);
-  
-  --grade-y: #059669;
-  --grade-y-bg: rgba(5, 150, 105, 0.12);
+
+  /* Dark green secondary accent used together with the orange */
+  --accent: #14532d;
+  --accent-hover: #166534;
+  --accent-light: rgba(20, 83, 45, 0.08);
+
+  --grade-y: #047857;
+  --grade-y-bg: rgba(4, 120, 87, 0.11);
   --grade-c: #2563eb;
-  --grade-c-bg: rgba(37, 99, 235, 0.12);
-  --grade-w: #d97706;
+  --grade-c-bg: rgba(37, 99, 235, 0.11);
+  --grade-w: #c2410c;
   --grade-w-bg: rgba(217, 119, 6, 0.12);
   --grade-d: #dc2626;
-  --grade-d-bg: rgba(220, 38, 38, 0.12);
-  
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow-card: 0 4px 20px -2px rgba(245, 73, 39, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(235, 220, 215, 0.6);
+  --grade-d-bg: rgba(220, 38, 38, 0.11);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 20, 0.04), 0 8px 24px -10px rgba(20, 83, 45, 0.16);
 
   --bg-input: #ffffff;
-  --border-input: #d6cac5;
-  --bg-navbar: rgba(255, 255, 255, 0.96);
-  --bg-nav-tabs: #faf4f1;
-  --border-navbar: #ebdcd7;
-  --bg-table-header: #f7eee9;
-  --border-table: #ebdcd7;
+  --border-input: #d5ddd6;
+  --bg-navbar: rgba(255, 255, 255, 0.85);
+  --bg-nav-tabs: linear-gradient(90deg, #0f3d22 0%, #14532d 55%, #166534 100%);
+  --border-navbar: #0f3d22;
+  --nav-tab-text: rgba(255, 255, 255, 0.78);
+  --nav-tab-text-hover: #ffffff;
+  --bg-table-header: #edf4ee;
+  --border-table: #e3e8e2;
   --bg-modal: #ffffff;
-  --border-modal: #ebdcd7;
-  --hero-gradient: linear-gradient(135deg, #ffffff 0%, #fff4f0 100%);
-  --hero-border: #f3ded7;
-  --login-gradient: radial-gradient(1200px 600px at 15% -10%, rgba(245, 73, 39, 0.14), transparent 60%), radial-gradient(900px 500px at 110% 110%, rgba(251, 146, 60, 0.10), transparent 60%), #fbf9f8;
+  --border-modal: #e3e8e2;
+  --hero-gradient: linear-gradient(120deg, #ffffff 0%, #f1f7f2 55%, #fff3ee 100%);
+  --hero-border: #dfe9e1;
+  --login-gradient: radial-gradient(1200px 600px at 15% -10%, rgba(245, 73, 39, 0.14), transparent 60%), radial-gradient(900px 500px at 110% 110%, rgba(20, 83, 45, 0.14), transparent 60%), #f6f7f4;
   --role-card-bg: #ffffff;
-  --role-card-border: #ebdcd7;
-  --badge-bg: rgba(245, 73, 39, 0.12);
+  --role-card-border: #e3e8e2;
+  --badge-bg: rgba(245, 73, 39, 0.10);
   --badge-border: rgba(245, 73, 39, 0.28);
-  --badge-text: #F54927;
+  --badge-text: #e0401f;
+
+  --seg-track: #ffffff;
+  --seg-active-bg: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  --seg-active-text: #ffffff;
+  --seg-active-shadow: 0 6px 16px -6px rgba(20, 83, 45, 0.55);
+  --scroll-thumb: #c5d3c8;
+  --focus-ring: rgba(245, 73, 39, 0.22);
 }
 
 * {
@@ -121,14 +149,17 @@ code, pre, .font-mono {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a374a;
-  border-radius: 4px;
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b4d66;
+  background: var(--text-muted);
+  background-clip: padding-box;
 }
 
 /* Animations */
@@ -248,7 +279,7 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea {
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* Custom Checkbox */
@@ -449,3 +480,166 @@ body, header, nav, main, section, footer {
 }
 
 
+
+/* ---- Magic tab indicator with "curve outside" corners (Navbar) ----
+   The active tab is a raised block in --nav-join-bg (the colour of the strip
+   directly under the navbar) whose bottom corners curve outwards into it. */
+.magic-nav {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 32px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.magic-nav::-webkit-scrollbar { display: none; }
+
+.magic-nav-item {
+  position: relative;
+  z-index: 1;
+  padding: 10px 20px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--nav-tab-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+.magic-nav-item:hover { color: var(--nav-tab-text-hover); }
+.magic-nav-item.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.magic-nav-indicator {
+  --curve: 14px;
+  position: absolute;
+  bottom: 0;
+  height: calc(100% - 8px);
+  background: var(--nav-join-bg, var(--bg-main));
+  border-radius: 12px 12px 0 0;
+  transition: left 0.45s cubic-bezier(0.65, 0, 0.35, 1), width 0.45s cubic-bezier(0.65, 0, 0.35, 1);
+  pointer-events: none;
+}
+/* Small accent bar on top of the active tab */
+.magic-nav-indicator > span {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 22px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--primary);
+  transform: translateX(-50%);
+}
+/* The outward curves on both bottom corners */
+.magic-nav-indicator::before,
+.magic-nav-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: var(--curve);
+  height: var(--curve);
+}
+.magic-nav-indicator::before,
+.magic-nav-indicator::after {
+  background: var(--nav-join-bg, var(--bg-main));
+}
+.magic-nav-indicator::before {
+  left: calc(var(--curve) * -1);
+  -webkit-mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+  mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+}
+.magic-nav-indicator::after {
+  right: calc(var(--curve) * -1);
+  -webkit-mask: radial-gradient(circle at 100% 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+  mask: radial-gradient(circle at 100% 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+}
+
+/* ---- Segmented tabs with a sliding active pill (Criteria C1 - C9) ---- */
+.seg-tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  background: var(--seg-track);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.seg-tabs::-webkit-scrollbar { height: 6px; }
+
+.seg-indicator {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  background: var(--seg-active-bg);
+  border-radius: 10px;
+  box-shadow: var(--seg-active-shadow);
+  transition: left 0.4s cubic-bezier(0.65, 0, 0.35, 1), width 0.4s cubic-bezier(0.65, 0, 0.35, 1);
+  pointer-events: none;
+}
+
+.seg-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.3s ease, background-color 0.2s ease;
+}
+.seg-tab:not(.active):hover { background: var(--accent-light); color: var(--text-primary); }
+.seg-tab.active { color: var(--seg-active-text); font-weight: 700; }
+
+.seg-code {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--accent-light);
+  color: var(--accent);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+.seg-tab.active .seg-code { background: var(--primary); color: #fff; }
+[data-theme="dark"] .seg-tab.active .seg-code { background: rgba(255, 255, 255, 0.22); }
+
+.seg-meta {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  transition: color 0.3s ease, border-color 0.3s ease;
+}
+.seg-tab.active .seg-meta { color: rgba(255, 255, 255, 0.85); border-color: rgba(255, 255, 255, 0.35); }
+
+.seg-yours { font-size: 0.7rem; font-weight: 700; color: var(--grade-y); }
+.seg-tab.active .seg-yours { color: #bbf7d0; }
+
+/* Modern touches shared by both themes */
+.btn { border-radius: 10px; }
+.btn-primary:hover { box-shadow: 0 8px 20px -6px rgba(245, 73, 39, 0.55); }
+.audit-table th { letter-spacing: 0.02em; }
+[data-theme="light"] .btn-secondary:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+[data-theme="light"] .btn-outline:hover { background: var(--accent-light); color: var(--accent); border-color: rgba(20, 83, 45, 0.35); }
+[data-theme="light"] input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }

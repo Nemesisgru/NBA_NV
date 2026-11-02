@@ -3,6 +3,7 @@ import {
   CheckSquare, Square, Filter, Search, Save, AlertTriangle, 
   ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2 
 } from 'lucide-react';
+import useSlidingIndicator from '../hooks/useSlidingIndicator';
 
 // Round to at most two decimal places for display (trailing zeros dropped)
 const fmt2 = (v) => {
@@ -275,56 +276,32 @@ export default function CriterionEvaluation({
     return rows.filter((m, i) => !m.is_header || (rows[i + 1] && !rows[i + 1].is_header));
   }, [metrics, searchQuery, gradeFilter, onlyFlagged]);
 
+  const { containerRef: critTabsRef, itemRef: critTabRef, indicator: critIndicator } =
+    useSlidingIndicator(activeCriterionCode, [criteriaList.length, userRole]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* Criteria Selection Tabs */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        overflowX: 'auto',
-        padding: '6px 0',
-        borderBottom: '1px solid #1e293b'
-      }}>
+      {/* Criteria Selection Tabs: segmented control with a sliding active pill */}
+      <div ref={critTabsRef} className="seg-tabs">
+        {critIndicator && (
+          <div className="seg-indicator" style={{ left: critIndicator.left, width: critIndicator.width }} />
+        )}
         {criteriaList.map(c => {
           const isCurrent = c.code === activeCriterionCode;
           const isAllocated = !editableCriteria || editableCriteria.includes(c.code);
           return (
             <button
               key={c.code}
+              ref={critTabRef(c.code)}
               onClick={() => setActiveCriterionCode(c.code)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: isCurrent ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
-                background: isCurrent ? 'var(--primary-light)' : 'var(--bg-surface)',
-                color: isCurrent ? 'var(--primary)' : 'var(--text-secondary)',
-                fontWeight: isCurrent ? 700 : 500,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s',
-                boxShadow: isCurrent ? '0 2px 8px var(--primary-light)' : undefined
-              }}
+              className={`seg-tab${isCurrent ? ' active' : ''}`}
             >
-              <span style={{ 
-                background: isCurrent ? 'var(--primary)' : 'var(--bg-card-hover)', 
-                color: isCurrent ? '#fff' : 'var(--text-secondary)', 
-                padding: '2px 6px', 
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}>
-                {c.code}
-              </span>
+              <span className="seg-code">{c.code}</span>
               <span>{c.title}</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({fmt2(c.max_marks)}M)</span>
+              <span className="seg-meta">{fmt2(c.max_marks)}M</span>
               {userRole === 'Auditor' && isAllocated && (
-                <span title="Allocated to you" style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 700 }}>● yours</span>
+                <span title="Allocated to you" className="seg-yours">● yours</span>
               )}
             </button>
           );
