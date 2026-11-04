@@ -185,7 +185,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
         {userRole === 'Admin' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Scope:</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--chip-label)', fontWeight: 600 }}>Scope:</span>
             {[
               ['department', departmentInfo ? `${departmentInfo.institute_code} - ${departmentInfo.code}` : 'Selected department'],
               ['all', 'All departments']
@@ -198,10 +198,10 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                   fontSize: '0.75rem',
                   fontWeight: 700,
                   borderRadius: '6px',
-                  border: 'none',
+                  border: scope === key ? '1px solid transparent' : '1px solid var(--chip-border)',
                   cursor: 'pointer',
-                  background: scope === key ? '#0891b2' : '#1e293b',
-                  color: scope === key ? '#fff' : '#94a3b8'
+                  background: scope === key ? 'var(--chip-alt-active-bg)' : 'var(--chip-bg)',
+                  color: scope === key ? '#fff' : 'var(--chip-text)'
                 }}
               >
                 {text}
@@ -235,7 +235,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Filter Status:</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--chip-label)', fontWeight: 600 }}>Filter Status:</span>
           {['ALL', 'Open', 'In Progress', 'Closed'].map(st => (
             <button
               key={st}
@@ -245,10 +245,10 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                 fontSize: '0.75rem',
                 fontWeight: 700,
                 borderRadius: '6px',
-                border: 'none',
+                border: statusFilter === st ? '1px solid transparent' : '1px solid var(--chip-border)',
                 cursor: 'pointer',
-                background: statusFilter === st ? '#4f46e5' : '#1e293b',
-                color: statusFilter === st ? '#fff' : '#94a3b8'
+                background: statusFilter === st ? 'var(--chip-active-bg)' : 'var(--chip-bg)',
+                color: statusFilter === st ? '#fff' : 'var(--chip-text)'
               }}
             >
               {st}
@@ -461,6 +461,19 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                     <option value="Closed">Closed</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                  Action Owner (leave blank if the HOD is responsible)
+                </label>
+                <input
+                  type="text"
+                  maxLength={150}
+                  value={editingAtr.owner_name || ''}
+                  onChange={(e) => setEditingAtr({ ...editingAtr, owner_name: e.target.value })}
+                  placeholder="Name of the faculty member responsible for this action..."
+                />
               </div>
 
               <div>

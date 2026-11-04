@@ -8,7 +8,7 @@ const fmt2 = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
 
 // Admin only: fix which questions of each criterion are part of the selected audit cycle, and which
 // evaluation table columns are shown during it. Both apply to every auditor allocated in that cycle.
-export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
+export default function AuditQuestionSetup({ selectedCycleId, cycles = [], onSaved }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -17,7 +17,13 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [mandatory, setMandatory] = useState(new Set());
+  const [savedMandatory, setSavedMandatory] = useState(new Set());
   const [columns, setColumns] = useState({});
+  // Other audit cycles that should get the same columns on the next save
+  const [applyTo, setApplyTo] = useState(new Set());
+  const [showApply, setShowApply] = useState(false);
+  useEffect(() => { setApplyTo(new Set()); setShowApply(false); }, [selectedCycleId]);
   const [savedColumns, setSavedColumns] = useState({});
 
   const load = async () => {
@@ -32,6 +38,9 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
       setData(json);
       setSelected(ids);
       setSavedSelection(ids);
+      const mand = new Set(json.criteria.flatMap(c => c.metrics.filter(m => m.mandatory).map(m => m.id)));
+      setMandatory(mand);
+      setSavedMandatory(new Set(mand));
       setColumns(normalizeColumns(json.visible_columns));
       setSavedColumns(normalizeColumns(json.visible_columns));
     } catch (err) {
@@ -52,7 +61,13 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
 
   const questionsDirty = selected.size !== savedSelection.size || [...selected].some(id => !savedSelection.has(id));
   const columnsDirty = !sameColumns(columns, savedColumns);
-  const isDirty = questionsDirty || columnsDirty;
+  const mandatoryDirty = mandatory.size !== savedMandatory.size || [...mandatory].some(id => !savedMandatory.has(id));
+  const isDirty = questionsDirty || columnsDirty || mandatoryDirty || applyTo.size > 0;
+  const toggleMandatory = (id) => setMandatory(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   // Questions already scored in this audit that the new selection would leave out
   const droppedScored = allQuestions.filter(m => !selected.has(m.id) && savedSelection.has(m.id) && m.scored_departments > 0);
@@ -94,6 +109,8 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
           : {
               cycle_id: selectedCycleId,
               visible_columns: columns,
+              ...(applyTo.size > 0 ? { apply_columns_to: [...applyTo] } : {}),
+              ...(mandatoryDirty ? { mandatory_metric_ids: [...mandatory] } : {}),
               // Only fix the question list when it was changed, so a column-only save keeps "all questions"
               ...(questionsDirty ? { metric_ids: [...selected] } : {})
             })
@@ -101,13 +118,18 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
       onSaved?.(selectedCycleId, json);
+      setApplyTo(new Set());
+      setShowApply(false);
       await load();
       setMessage({
         type: 'success',
         text: reset
           ? 'Reset: every question is part of this audit.'
           : `Saved for all auditors in this audit: ${json.question_count} questions (${fmt2(json.max_marks)} marks), ` +
-            `${countShown(normalizeColumns(json.visible_columns))} of ${TOGGLEABLE_COLUMNS.length} columns shown.`
+            `${countShown(normalizeColumns(json.visible_columns))} of ${TOGGLEABLE_COLUMNS.length} columns shown.` +
+            (json.columns_applied_to?.length
+              ? ` The same columns now also apply to: ${json.columns_applied_to.map(c => c.name).join(', ')}.`
+              : ' Other audits keep their own columns.')
       });
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
@@ -202,8 +224,55 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
           onChange={setColumns}
           title="COLUMNS SHOWN DURING THIS AUDIT"
           highlight={columnsDirty}
-          footer="Click Save changes to apply to every auditor in this audit."
+          footer="Click Save changes to apply to every auditor in this audit. Use the next button to apply the same columns to other audits."
         />
+
+        {/* Apply the same columns to other audit cycles */}
+        <div style={{ position: 'relative' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowApply(!showApply)}
+            style={applyTo.size ? { borderColor: 'var(--primary)', color: 'var(--primary)' } : undefined}
+            title="Columns are saved per audit. Choose other audits that should get the same columns.">
+            {applyTo.size === 0 ? 'This audit only' : `This audit + ${applyTo.size} more`} {showApply ? '\u25B2' : '\u25BC'}
+          </button>
+          {showApply && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 60, width: '320px',
+              background: 'var(--bg-modal)', border: '1px solid var(--border-modal)', borderRadius: 'var(--radius-md)',
+              boxShadow: '0 16px 40px -12px rgba(0, 0, 0, 0.35)', padding: '12px'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.04em', color: 'var(--text-muted)', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>
+                ALSO APPLY THESE COLUMNS TO
+              </div>
+              {(() => {
+                const others = cycles.filter(c => c.id !== selectedCycleId);
+                const allOn = others.length > 0 && others.every(c => applyTo.has(c.id));
+                return (
+                  <>
+                    <div onClick={() => setApplyTo(allOn ? new Set() : new Set(others.map(c => c.id)))}
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                      <input type="checkbox" checked={allOn} readOnly style={{ pointerEvents: 'none' }} /> All other audits
+                    </div>
+                    {others.map(c => {
+                      const same = sameColumns(normalizeColumns(c.visible_columns), columns);
+                      return (
+                        <div key={c.id} onClick={() => setApplyTo(prev => { const n = new Set(prev); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
+                          style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '5px 4px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                          <input type="checkbox" checked={applyTo.has(c.id)} readOnly style={{ pointerEvents: 'none' }} />
+                          <span style={{ flex: 1 }}>{c.academic_year} {c.semester} ({c.cycle_type})</span>
+                          <span style={{ fontSize: '0.66rem', color: same ? 'var(--grade-y)' : 'var(--grade-w)' }}>{same ? 'same columns' : 'different columns'}</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                Only the columns are copied. The question selection and mandatory evidence stay per audit, because they change marks.
+                Click Save changes to apply.
+              </div>
+            </div>
+          )}
+        </div>
 
         {data.questions_fixed && (
           <button className="btn btn-secondary btn-sm" onClick={() => save(true)} disabled={saving} title="Use every question in this audit">
@@ -308,6 +377,20 @@ export default function AuditQuestionSetup({ selectedCycleId, onSaved }) {
                         {m.code}
                       </span>
                       <span style={{ flex: 1, fontSize: '0.82rem', color: 'var(--text-primary)' }}>{m.key_aspect}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleMandatory(m.id); }}
+                        title="Evidence for this question is mandatory in this audit"
+                        aria-pressed={mandatory.has(m.id)}
+                        style={{
+                          fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', cursor: 'pointer',
+                          border: `1px solid ${mandatory.has(m.id) ? 'var(--primary)' : 'var(--border-subtle)'}`,
+                          background: mandatory.has(m.id) ? 'var(--primary-light)' : 'transparent',
+                          color: mandatory.has(m.id) ? 'var(--primary)' : 'var(--text-muted)', whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {mandatory.has(m.id) ? '★ Mandatory evidence' : '☆ Mandatory?'}
+                      </button>
                       {m.scored_departments > 0 && (
                         <span title="Departments already scored on this question in this audit"
                           style={{ fontSize: '0.68rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>

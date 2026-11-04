@@ -59,6 +59,10 @@ class AuditCycle(models.Model):
     selected_metric_ids = models.JSONField(null=True, blank=True)
     # Evaluation table columns shown during this audit ({column key: bool}); null means the defaults
     visible_columns = models.JSONField(null=True, blank=True)
+    # Questions whose evidence the Admin marked as mandatory for this audit; null means not configured
+    mandatory_metric_ids = models.JSONField(null=True, blank=True)
+    # Rubric (grade thresholds) version in force when the first score of this cycle was saved
+    rubric_snapshot = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.academic_year} {self.semester} ({self.cycle_type})"
@@ -154,6 +158,8 @@ class ActionTakenReport(models.Model):
     hod_remarks = models.TextField(blank=True)
     auditor_signoff = models.BooleanField(default=False)
     auditor_feedback = models.TextField(blank=True)
+    # Person responsible for the corrective action (blank: the department's HOD)
+    owner_name = models.CharField(max_length=150, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -165,6 +171,21 @@ class AuditSettings(models.Model):
     w_threshold = models.FloatField(default=0.40)
     rubric_max_score = models.FloatField(default=10.0)
     physical_gap_threshold = models.FloatField(default=0.15)
+    # Increases whenever a grade threshold changes, so cycles scored under different rules can be told apart
+    version = models.PositiveIntegerField(default=1)
+
+    THRESHOLD_FIELDS = ('y_threshold', 'c_threshold', 'w_threshold')
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = AuditSettings.objects.filter(pk=self.pk).values(*self.THRESHOLD_FIELDS).first()
+            if old and any(old[f] != getattr(self, f) for f in self.THRESHOLD_FIELDS):
+                self.version = (self.version or 1) + 1
+        super().save(*args, **kwargs)
+
+    def rubric_snapshot(self):
+        return {'version': self.version, 'y_threshold': self.y_threshold,
+                'c_threshold': self.c_threshold, 'w_threshold': self.w_threshold}
 
     def __str__(self):
         return "Audit Global Settings"
@@ -212,6 +233,8 @@ class AIReport(models.Model):
     rubric_snapshot = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=10, choices=STATUSES, default='pending')
     error = models.CharField(max_length=300, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
     files = models.JSONField(default=dict, blank=True)  # {format: file name inside AUDIT_AI['REPORT_DIR']}
     data_as_of = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -219,3 +242,41 @@ class AIReport(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+# ---------------------------------------------------------------- Evidence files
+class EvidenceFile(models.Model):
+    """A document uploaded as evidence for one question of a department's audit.
+    Stored outside every served folder; downloaded only through the authorised view."""
+    EXTRACTION = [('pending', 'pending'), ('running', 'running'), ('done', 'done'),
+                  ('manual', 'manual verification required'), ('failed', 'failed')]
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='evidence_files')
+    cycle = models.ForeignKey(AuditCycle, on_delete=models.CASCADE, related_name='evidence_files')
+    metric = models.ForeignKey(MetricItem, on_delete=models.CASCADE, related_name='evidence_files')
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    original_name = models.CharField(max_length=200)
+    stored_name = models.CharField(max_length=120, unique=True)
+    file_type = models.CharField(max_length=10)        # pdf | docx
+    size = models.PositiveIntegerField()
+    sha256 = models.CharField(max_length=64)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=EXTRACTION, default='pending')
+    status_note = models.CharField(max_length=300, blank=True)
+    page_count = models.PositiveIntegerField(null=True, blank=True)
+    text_chars = models.PositiveIntegerField(default=0)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['metric__criterion__order', 'metric__order', 'uploaded_at']
+
+
+class EvidenceChunk(models.Model):
+    """Extracted text of an evidence file, with its real page / section location (never invented)."""
+    evidence = models.ForeignKey(EvidenceFile, on_delete=models.CASCADE, related_name='chunks')
+    order = models.PositiveIntegerField()
+    location = models.CharField(max_length=120)
+    text = models.TextField()
+
+    class Meta:
+        ordering = ['evidence_id', 'order']

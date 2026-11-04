@@ -10,11 +10,10 @@ import time
 from django.conf import settings
 from django.core.cache import cache
 from django.http import FileResponse, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 
 from ..models import AIConversation, AIMessage, AIReport, AuditCycle
 from ..permissions import role_required
-from . import intent, narration, ollama, reports
+from . import intent, jobs, narration, ollama, reports
 from .operations import OPERATIONS, OperationError, run_operation, validate_request
 from .scope import ScopeError, resolve_scope, scope_options
 
@@ -81,7 +80,6 @@ def ai_status(request):
 
 
 # ---------------------------------------------------------------- deterministic analytics (no AI)
-@csrf_exempt
 @role_required()
 @_guard
 def ai_analytics(request):
@@ -108,7 +106,6 @@ def _message_json(m):
             'result': m.result, 'narration': m.narration, 'created_at': m.created_at.isoformat()}
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_chat(request):
@@ -175,7 +172,6 @@ def ai_chat(request):
                                          'filters': {k: _jsonable(v) for k, v in plan.get('filters', {}).items()}}})
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_message_narrate(request, message_id):
@@ -200,7 +196,6 @@ def ai_message_narrate(request, message_id):
     return JsonResponse({'message': _message_json(msg)})
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_conversations(request):
@@ -211,7 +206,6 @@ def ai_conversations(request):
     return _error('GET required', 405)
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_conversation_detail(request, conv_id):
@@ -224,7 +218,6 @@ def ai_conversation_detail(request, conv_id):
 
 # ---------------------------------------------------------------- reports
 def _report_json(r):
-    reports.mark_stale(r)
     return {
         'id': r.id, 'status': r.status, 'error': r.error,
         'department': f"{r.department.institute.code} - {r.department.code}", 'cycle': str(r.cycle),
@@ -236,11 +229,11 @@ def _report_json(r):
     }
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_reports(request):
     if request.method == 'GET':
+        jobs.recover()
         qs = AIReport.objects.filter(owner=request.user).select_related('department__institute', 'cycle', 'compare_cycle')[:20]
         return JsonResponse({'reports': [_report_json(r) for r in qs]})
     if request.method != 'POST':
@@ -269,10 +262,10 @@ def _owned_report(request, report_id):
     return r
 
 
-@csrf_exempt
 @role_required()
 @_guard
 def ai_report_detail(request, report_id):
+    jobs.recover()
     r = _owned_report(request, report_id)
     if request.method == 'DELETE':
         reports.delete_report_files(r)

@@ -6,8 +6,9 @@ the AuditSettings thresholds, and the per-cycle question selection from question
 
 Definitions (fields that exist in this application; nothing is inferred beyond them):
   * Submission completed  - a question of the audit has a grade (auditor entered items checked / valid).
+  * Evidence uploaded     - at least one evidence file is attached to the question (EvidenceFile).
   * Evidence status       - the auditor-recorded AuditEvaluation.evidence_status
-                            (Complete / Partial / Not Uploaded). The application stores no evidence files.
+                            (Complete / Partial / Not Uploaded).
   * Evidence verified     - physical_check_result == 'Matches claim'.
   * Criterion compliant   - every question of the criterion scored AND criterion grade 'Y'
                             (README: Y = Compliant, C = Concern, W = Weakness, D = Deficiency).
@@ -19,7 +20,8 @@ from datetime import date
 from django.db.models import Max
 from django.utils import timezone
 
-from ..models import ActionTakenReport, AuditEvaluation, Criterion
+from ..evidence import search_evidence
+from ..models import ActionTakenReport, AuditEvaluation, Criterion, EvidenceFile
 from ..question_scope import cycle_metrics, selected_metric_ids
 from ..views import calculate_grade, get_settings
 from .scope import cycle_sort_key, ordered_cycles
@@ -32,17 +34,21 @@ ROW_LIMIT = 200
 
 DEFINITIONS = {
     'submission_completed': 'The question has a grade: the auditor entered items checked and valid items.',
-    'evidence_status': 'Evidence availability recorded by the auditor (Complete / Partial / Not Uploaded). '
-                       'The application stores no evidence files, so nothing is checked automatically.',
+    'evidence_uploaded': 'At least one evidence file (PDF / DOCX) is attached to the question. An uploaded file is '
+                         'not verified and does not make a question or criterion compliant.',
+    'evidence_status': 'Evidence availability recorded by the auditor (Complete / Partial / Not Uploaded).',
     'evidence_verified': "The auditor's physical check result is 'Matches claim'.",
     'criterion_compliant': "All questions of the criterion are scored and the criterion grade is Y (> Y threshold). "
                            "A recorded evidence status alone never makes a criterion compliant.",
     'finding': 'A scored question graded W or D, or flagged for the Action Taken Report.',
     'finding_approved': "The finding's Action Taken Report carries the auditor sign-off.",
-    'mandatory_evidence': 'Not configured: the application has no "mandatory evidence" flag, '
-                          'so all questions of the audit are treated alike.',
-    'corrective_action_owner': 'Not configured per action: the Head of Department of the audited department is responsible.',
-    'rubric_version': 'Not tracked: the current global Y/C/W/D thresholds are applied to every cycle.',
+    'mandatory_evidence': 'Questions the Admin marked "mandatory evidence" for this audit (Audit Questions tab). '
+                          'If none are marked, this is reported as not configured.',
+    'corrective_action_owner': 'The owner entered on the Action Taken Report; if none is entered, the Head of Department.',
+    'rubric_version': 'The grade-threshold version recorded when the first score of a cycle was saved. '
+                      'Grades are always shown with the current thresholds, as everywhere in the application.',
+    'evidence_text': 'Text extracted from uploaded PDF / DOCX files. Scanned or unreadable files are marked '
+                     '"manual verification required" and are never treated as missing or non-compliant.',
 }
 
 
@@ -57,14 +63,20 @@ def ratio(numerator, denominator):
 
 def rubric_snapshot(cycle=None):
     s = get_settings()
+    recorded = (cycle.rubric_snapshot if cycle else None) or None
     return {
+        'current_version': s.version,
+        'cycle_version': recorded.get('version') if recorded else None,
+        'cycle_thresholds': recorded,
+        'thresholds_changed_since_cycle': bool(recorded) and any(
+            recorded.get(k) != getattr(s, k) for k in ('y_threshold', 'c_threshold', 'w_threshold')),
         'y_threshold_percent': s.y_threshold * 100,
         'c_threshold_percent': s.c_threshold * 100,
         'w_threshold_percent': s.w_threshold * 100,
         'grade_rule': f'Y > {s.y_threshold * 100:g}%, C >= {s.c_threshold * 100:g}%, W >= {s.w_threshold * 100:g}%, D below',
         'marks_rule': 'Marks = Max Marks x min(Validated Value / Benchmark, 1); percentage = marks / max marks',
         'questions_fixed_for_cycle': bool(cycle and selected_metric_ids(cycle.id) is not None),
-        'version': 'not tracked',
+        'version': f"v{recorded['version']}" if recorded else 'not recorded (no scores saved yet)',
     }
 
 
@@ -119,10 +131,14 @@ def get_audit_summary(scope, criterion=None):
              'evidence_status', 'physical_check_result', 'is_flagged_for_atr'))
     atrs = list(ActionTakenReport.objects.filter(evaluation__id__in=[e['id'] for e in evals])
                 .values('status', 'auditor_signoff', 'evaluation__department_id', 'evaluation__metric__criterion__code'))
+    files = list(EvidenceFile.objects.filter(cycle=scope.cycle, department_id__in=scope.department_ids, metric__in=questions)
+                 .values('department_id', 'metric_id', 'metric__criterion__code', 'status'))
+    with_file = {(f['department_id'], f['metric_id']): f['metric__criterion__code'] for f in files}
 
     def empty():
         return {'scored': 0, 'records': 0, 'marks': 0.0, 'ev_complete': 0, 'ev_partial': 0, 'ev_not_uploaded': 0,
-                'verified': 0, 'flagged': 0, 'findings': 0, 'atr': defaultdict(int), 'signed_off': 0}
+                'verified': 0, 'flagged': 0, 'findings': 0, 'atr': defaultdict(int), 'signed_off': 0,
+                'files': 0, 'manual': 0}
 
     acc = defaultdict(empty)  # (dept_id, crit) -> counters
     for e in evals:
@@ -141,6 +157,10 @@ def get_audit_summary(scope, criterion=None):
         a = acc[(t['evaluation__department_id'], t['evaluation__metric__criterion__code'])]
         a['atr'][t['status']] += 1
         a['signed_off'] += bool(t['auditor_signoff'])
+    for (dept_id, _), crit in with_file.items():
+        acc[(dept_id, crit)]['files'] += 1
+    for f in files:
+        acc[(f['department_id'], f['metric__criterion__code'])]['manual'] += f['status'] == 'manual'
 
     def row(a, n_questions, max_marks):
         pct = round(a['marks'] / max_marks * 100, 2) if max_marks > 0 and a['records'] else None
@@ -155,6 +175,8 @@ def get_audit_summary(scope, criterion=None):
             'questions_in_audit': n_questions,
             'submission_completed': ratio(a['scored'], n_questions),
             'not_assessed': n_questions - a['records'],
+            'evidence_uploaded': ratio(a['files'], n_questions),
+            'evidence_files_manual_check': a['manual'],
             'evidence_complete': ratio(a['ev_complete'], n_questions),
             'evidence_partial': a['ev_partial'],
             'evidence_not_uploaded': a['ev_not_uploaded'],
@@ -175,7 +197,7 @@ def get_audit_summary(scope, criterion=None):
         m = empty()
         for p in parts:
             for k in ('scored', 'records', 'marks', 'ev_complete', 'ev_partial', 'ev_not_uploaded',
-                      'verified', 'flagged', 'findings', 'signed_off'):
+                      'verified', 'flagged', 'findings', 'signed_off', 'files', 'manual'):
                 m[k] += p[k]
             for s, n in p['atr'].items():
                 m['atr'][s] += n
@@ -203,43 +225,69 @@ def get_audit_summary(scope, criterion=None):
         result['notes'].append('No evaluations have been recorded for this scope and cycle yet.')
     if len(scope.department_ids) > 1:
         result['notes'].append('Criterion figures are totals across all departments in scope.')
+    if result['rubric']['thresholds_changed_since_cycle']:
+        result['notes'].append(f"The grade thresholds changed after this cycle was scored (recorded {result['rubric']['version']}, "
+                               f"current v{result['rubric']['current_version']}); grades use the current thresholds.")
     result['refs'] = {'criteria': [r['criterion'] for r in crit_rows]}
     return result
 
 
 # ---------------------------------------------------------------- 2. missing evidence
-def get_missing_evidence(scope, criterion=None, limit=ROW_LIMIT):
+def get_missing_evidence(scope, criterion=None, limit=ROW_LIMIT, mandatory_only=False):
     questions = _questions(scope.cycle, criterion)
+    mandatory = set(scope.cycle.mandatory_metric_ids or [])
+    configured = scope.cycle.mandatory_metric_ids is not None and bool(mandatory)
+    if mandatory_only:
+        questions = [m for m in questions if m.id in mandatory]
     evals = {(e.department_id, e.metric_id): e for e in AuditEvaluation.objects.filter(
         cycle=scope.cycle, department_id__in=scope.department_ids, metric__in=questions)}
+    file_counts = defaultdict(int)
+    for f in EvidenceFile.objects.filter(cycle=scope.cycle, department_id__in=scope.department_ids,
+                                         metric__in=questions).values('department_id', 'metric_id'):
+        file_counts[(f['department_id'], f['metric_id'])] += 1
     rows, counts = [], defaultdict(int)
     for d in scope.departments:
         for m in questions:
             e = evals.get((d.id, m.id))
+            n_files = file_counts[(d.id, m.id)]
+            is_mand = m.id in mandatory
+            if is_mand and n_files == 0:
+                counts['mandatory_without_file'] += 1
             if e is None:
                 state = 'Not assessed'
             elif e.evidence_status in ('Not Uploaded', 'Partial'):
                 state = e.evidence_status
+            elif is_mand and n_files == 0:
+                state = 'Mandatory, no file uploaded'
             else:
                 continue
             counts[state] += 1
             if len(rows) < limit:
                 rows.append({
                     'department': _dept_label(d), 'criterion': m.criterion.code, 'question': m.code,
-                    'key_aspect': m.key_aspect[:160], 'evidence_status': state,
+                    'key_aspect': m.key_aspect[:160], 'evidence_status': state, 'mandatory': is_mand,
+                    'files_uploaded': n_files,
                     'physical_check': e.physical_check_result if e else None,
                     'grade': (e.grade or None) if e else None,
                     'auditor_remarks': (e.auditor_remarks[:200] if e else ''),
                 })
     total_q = len(questions) * len(scope.department_ids)
-    result = _base('missing_evidence', 'Missing or partial evidence', scope, criterion_filter=criterion,
+    n_mand = sum(1 for m in questions if m.id in mandatory) * len(scope.department_ids)
+    result = _base('missing_evidence', 'Missing mandatory evidence' if mandatory_only else 'Missing or partial evidence',
+                   scope, criterion_filter=criterion, mandatory_only=mandatory_only,
                    totals={
                        'questions_in_scope': total_q,
                        'evidence_not_uploaded': ratio(counts['Not Uploaded'], total_q),
                        'evidence_partial': ratio(counts['Partial'], total_q),
                        'not_assessed': ratio(counts['Not assessed'], total_q),
-                   }, rows=rows, truncated=sum(counts.values()) > len(rows))
-    result['notes'].append(DEFINITIONS['mandatory_evidence'])
+                       'mandatory_configured': configured,
+                       'mandatory_without_file': ratio(counts['mandatory_without_file'], n_mand) if configured else None,
+                   }, rows=rows, truncated=sum(v for k, v in counts.items() if k != 'mandatory_without_file') > len(rows))
+    if not configured:
+        result['notes'].append('Mandatory evidence is not configured for this audit (Admin: Audit Questions tab), '
+                               'so all questions are treated alike.')
+    else:
+        result['notes'].append(DEFINITIONS['mandatory_evidence'])
     result['notes'].append("'Not assessed' means no evaluation exists yet; it is not treated as missing evidence or non-compliance.")
     result['refs'] = {'questions': sorted({r['question'] for r in rows}), 'criteria': sorted({r['criterion'] for r in rows})}
     return result
@@ -247,7 +295,7 @@ def get_missing_evidence(scope, criterion=None, limit=ROW_LIMIT):
 
 # ---------------------------------------------------------------- 3. corrective actions
 def get_pending_corrective_actions(scope, criterion=None, status=None, overdue_only=False, due_before=None,
-                                   limit=ROW_LIMIT):
+                                   limit=ROW_LIMIT, owner=None):
     today = date.today()
     qs = ActionTakenReport.objects.filter(
         evaluation__cycle=scope.cycle, evaluation__department_id__in=scope.department_ids,
@@ -258,6 +306,8 @@ def get_pending_corrective_actions(scope, criterion=None, status=None, overdue_o
     qs = qs.filter(status=status) if status else qs.exclude(status='Closed')
     if due_before:
         qs = qs.filter(target_date__lte=due_before)
+    if owner:
+        qs = qs.filter(owner_name__icontains=owner)
 
     rows, matching, overdue, no_date, not_entered = [], 0, 0, 0, 0
     for a in qs.order_by('target_date', 'evaluation__department__code', 'evaluation__metric__order'):
@@ -277,7 +327,8 @@ def get_pending_corrective_actions(scope, criterion=None, status=None, overdue_o
                 'key_aspect': ev.metric.key_aspect[:160], 'grade': ev.grade or None, 'percentage': ev.percentage,
                 'status': a.status, 'target_date': a.target_date.isoformat() if a.target_date else None,
                 'days_overdue': (today - a.target_date).days if is_overdue else 0,
-                'owner': ev.department.hod_name or f'HOD, {_dept_label(ev.department)}',
+                'owner': a.owner_name or ev.department.hod_name or f'HOD, {_dept_label(ev.department)}',
+                'owner_entered': bool(a.owner_name),
                 'action_plan_entered': plan_entered,
                 'action_plan': a.action_plan[:240] if plan_entered else '',
                 'auditor_signoff': a.auditor_signoff,
@@ -400,6 +451,13 @@ def compare_audit_cycles(scope, compare_cycle=None):
             reason = ''
         crit_info.append({'criterion': code, 'title': titles[code], 'compatible': not reason,
                           'reason': reason, 'max_marks': a['max'] if a and not reason else None})
+    ra, rb = scope.cycle.rubric_snapshot, other.rubric_snapshot
+    rubric_differs = bool(ra and rb) and any(ra.get(k) != rb.get(k) for k in ('y_threshold', 'c_threshold', 'w_threshold'))
+    if rubric_differs:
+        for c in crit_info:
+            if c['compatible']:
+                c['compatible'], c['reason'] = False, (f"Different rubric versions (v{ra.get('version')} vs v{rb.get('version')}): "
+                                                      'grade thresholds differ')
     compatible_codes = [c['criterion'] for c in crit_info if c['compatible']]
     fully_compatible = all(c['compatible'] for c in crit_info)
 
@@ -448,7 +506,9 @@ def compare_audit_cycles(scope, compare_cycle=None):
                                'Only criteria with identical questions are compared.')
     if not compare_cycle:
         result['notes'].append(f'Compared with the most recent earlier cycle that has data: {other}.')
-    result['notes'].append(DEFINITIONS['rubric_version'])
+    if not ra or not rb:
+        result['notes'].append('The rubric version of ' + ('both cycles' if not ra and not rb else 'one cycle') +
+                               ' is not recorded (no scores saved yet), so only question sets were compared.')
     if len(scope.departments) > 40:
         result['notes'].append('Only the first 40 departments are listed.')
     result['refs'] = {'criteria': compatible_codes}
@@ -472,6 +532,39 @@ def get_evidence_references(scope, criterion=None, limit=500):
     return {'rows': rows, 'total': qs.count()}
 
 
+# ---------------------------------------------------------------- evidence documents
+def get_evidence_files(scope, criterion=None, limit=500):
+    qs = EvidenceFile.objects.filter(cycle=scope.cycle, department_id__in=scope.department_ids,
+                                     metric__in=cycle_metrics(scope.cycle.id)).select_related('metric__criterion', 'department__institute')
+    if criterion:
+        qs = qs.filter(metric__criterion__code=criterion)
+    rows = [{'evidence_id': f'EV-{f.id}', 'department': _dept_label(f.department), 'criterion': f.metric.criterion.code,
+             'question': f.metric.code, 'file': f.original_name, 'extraction': f.get_status_display(),
+             'pages': f.page_count, 'uploaded_at': f.uploaded_at.isoformat()} for f in qs[:limit]]
+    return {'rows': rows, 'total': qs.count(), 'manual_check': qs.filter(status='manual').count()}
+
+
+def search_evidence_text(scope, query, criterion=None, limit=10):
+    terms, hits = search_evidence(scope.department_ids, scope.cycle, query,
+                                  list(cycle_metrics(scope.cycle.id).values_list('id', flat=True)), criterion, limit)
+    rows = [{'evidence_id': f'EV-{c.evidence_id}', 'file': c.evidence.original_name,
+             'department': _dept_label(c.evidence.department), 'criterion': c.evidence.metric.criterion.code,
+             'question': c.evidence.metric.code, 'location': c.location, 'excerpt': snippet, 'score': score}
+            for score, c, snippet in hits]
+    files = get_evidence_files(scope, criterion)
+    result = _base('search_evidence', 'Evidence document search', scope, criterion_filter=criterion,
+                   query_terms=terms,
+                   totals={'matches_listed': len(rows), 'files_in_scope': files['total'],
+                           'files_needing_manual_check': files['manual_check']}, rows=rows)
+    if not terms:
+        result['notes'].append('Give some words to search for, e.g. "search evidence for industry MoU".')
+    result['notes'].append(DEFINITIONS['evidence_text'])
+    result['notes'].append('Excerpts are quoted from the documents as data; they are not findings and were not verified.')
+    result['refs'] = {'evidence': [r['evidence_id'] for r in rows], 'questions': sorted({r['question'] for r in rows}),
+                      'criteria': sorted({r['criterion'] for r in rows})}
+    return result
+
+
 # ---------------------------------------------------------------- 6. report snapshot
 def build_report_snapshot(scope, compare_cycle=None, criterion=None):
     """One validated snapshot that every report format is rendered from"""
@@ -482,6 +575,7 @@ def build_report_snapshot(scope, compare_cycle=None, criterion=None):
         'findings': get_criterion_findings(scope, criterion, limit=500),
         'comparison': compare_audit_cycles(scope, compare_cycle),
         'evidence_refs': get_evidence_references(scope, criterion),
+        'evidence_files': get_evidence_files(scope, criterion),
         'rubric': rubric_snapshot(scope.cycle),
         'scope': scope.describe(),
         'data_as_of': data_as_of(scope.department_ids, scope.cycle),

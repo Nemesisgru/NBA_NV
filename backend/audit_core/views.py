@@ -2,7 +2,7 @@ import json
 import csv
 import io
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django.contrib.auth import authenticate, login, logout
@@ -12,6 +12,7 @@ from .models import (
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
 )
 from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user
+from .evidence import can_upload as can_upload_evidence, file_json as evidence_json, files_for as evidence_files_for
 from .question_scope import (
     selected_metric_ids, cycle_metrics, is_metric_in_cycle, criteria_totals, visible_columns, normalize_columns,
     hidden_fields,
@@ -39,7 +40,6 @@ def calculate_grade(percentage, settings):
     else:
         return 'D'
 
-@csrf_exempt
 def auth_login_view(request):
     """User login endpoint for Admin, Auditors, and HODs"""
     if request.method != 'POST':
@@ -67,13 +67,13 @@ def auth_login_view(request):
     login(request, user)
     return JsonResponse({'status': 'success', 'user': user_payload(user)})
 
+@ensure_csrf_cookie
 def auth_me_view(request):
     """Current session user, used by the frontend to restore a login after page reload"""
     if user_role(request.user) is None:
         return JsonResponse({'error': 'Login required'}, status=401)
     return JsonResponse({'status': 'success', 'user': user_payload(request.user)})
 
-@csrf_exempt
 def auth_logout_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
@@ -248,6 +248,11 @@ def criterion_detail(request, criterion_code):
 
     fixed_ids = selected_metric_ids(cycle_id)
     cycle_obj = AuditCycle.objects.filter(id=cycle_id).first() if cycle_id else None
+    evidence_map = {}
+    if dept_id and cycle_obj:
+        for ef in evidence_files_for(dept_id, cycle_obj.id, crit.metrics.values_list('id', flat=True)):
+            evidence_map.setdefault(ef.metric_id, []).append(evidence_json(ef, request))
+    mandatory = set((cycle_obj.mandatory_metric_ids or []) if cycle_obj else [])
     hidden_metric, hidden_eval = hidden_fields(cycle_obj, request.role)
     items = []
     for m in crit.metrics.order_by('order').all():
@@ -272,7 +277,9 @@ def criterion_detail(request, criterion_code):
             'unit': m.unit,
             'max_marks': m.max_marks,
             'benchmark': m.benchmark,
-            'evaluation': {k: v for k, v in ev.items() if k not in hidden_eval}
+            'evaluation': {k: v for k, v in ev.items() if k not in hidden_eval},
+            'evidence_files': evidence_map.get(m.id, []),
+            'evidence_mandatory': m.id in mandatory,
         })
         if not m.is_header:
             for f in hidden_metric:
@@ -291,10 +298,11 @@ def criterion_detail(request, criterion_code):
         'can_edit': bool(dept_id and cycle_id) and can_edit_criterion(request, dept_id, cycle_id, crit.code),
         'visible_columns': visible_columns(cycle_obj),
         'columns_restricted': bool(hidden_metric or hidden_eval),
+        'can_upload_evidence': bool(dept_id and cycle_obj) and can_upload_evidence(
+            request, Department.objects.filter(id=dept_id).first()),
         'metrics': items
     })
 
-@csrf_exempt
 @role_required('Admin', 'Auditor')
 def save_evaluation(request):
     """Save an individual metric evaluation with live calculations and automatic ATR for < 60%"""
@@ -380,6 +388,11 @@ def save_evaluation(request):
         is_flagged = True
     elif grade in ['W', 'D']:
         is_flagged = True
+
+    cycle_row = AuditCycle.objects.get(id=cycle_id)
+    if cycle_row.rubric_snapshot is None and grade:
+        cycle_row.rubric_snapshot = settings.rubric_snapshot()
+        cycle_row.save(update_fields=['rubric_snapshot'])
 
     eval_obj, created = AuditEvaluation.objects.update_or_create(
         department_id=dept_id,
@@ -718,13 +731,13 @@ def atr_list(request):
             'evidence_ref': item.evidence_ref,
             'status': item.status,
             'hod_remarks': item.hod_remarks,
+            'owner_name': item.owner_name,
             'auditor_signoff': item.auditor_signoff,
             'auditor_feedback': item.auditor_feedback,
         })
 
     return JsonResponse({'atrs': atrs})
 
-@csrf_exempt
 @role_required()
 def update_atr(request):
     """HOD fills root cause / action plan; Auditor signs off; Admin may change everything"""
@@ -765,6 +778,7 @@ def update_atr(request):
     if 'evidence_ref' in data: atr.evidence_ref = data['evidence_ref']
     if 'status' in data: atr.status = data['status']
     if 'hod_remarks' in data: atr.hod_remarks = data['hod_remarks']
+    if 'owner_name' in data: atr.owner_name = str(data['owner_name'] or '')[:150]
     if 'auditor_signoff' in data: atr.auditor_signoff = bool(data['auditor_signoff'])
     if 'auditor_feedback' in data: atr.auditor_feedback = data['auditor_feedback']
 
@@ -794,6 +808,7 @@ def cycle_questions(request):
                 'max_marks': m.max_marks,
                 'unit': m.unit,
                 'selected': (not m.is_header) and (fixed_ids is None or m.id in fixed_ids),
+                'mandatory': m.id in (cycle.mandatory_metric_ids or []),
                 'scored_departments': scored.get(m.id, 0),
             })
         criteria.append({'code': crit.code, 'title': crit.title, 'metrics': items})
@@ -802,11 +817,11 @@ def cycle_questions(request):
         'cycle': {'id': cycle.id, 'name': str(cycle)},
         'questions_fixed': fixed_ids is not None,
         'visible_columns': visible_columns(cycle),
+        'mandatory_configured': bool(cycle.mandatory_metric_ids),
         'departments_allocated': cycle.assignments.count(),
         'criteria': criteria,
     })
 
-@csrf_exempt
 @role_required('Admin')
 def save_cycle_questions(request):
     """Fix the questions ({metric_ids} or {reset: true}) and/or the evaluation table columns
@@ -819,9 +834,28 @@ def save_cycle_questions(request):
         return JsonResponse({'error': 'Audit cycle not found'}, status=404)
 
     fields = []
+    applied_to = []
     if 'visible_columns' in data:
         cycle.visible_columns = normalize_columns(data.get('visible_columns'))
         fields.append('visible_columns')
+        # Optionally apply the same columns to other audit cycles (question selection stays per audit)
+        others = data.get('apply_columns_to') or []
+        if others == 'all':
+            targets = AuditCycle.objects.exclude(id=cycle.id)
+        else:
+            try:
+                targets = AuditCycle.objects.filter(id__in=[int(i) for i in others]).exclude(id=cycle.id)
+            except (TypeError, ValueError):
+                return JsonResponse({'error': 'Invalid audit cycles to apply the columns to'}, status=400)
+        for other in targets:
+            other.visible_columns = cycle.visible_columns
+            other.save(update_fields=['visible_columns'])
+            applied_to.append({'id': other.id, 'name': str(other)})
+    if 'mandatory_metric_ids' in data:
+        requested = {int(i) for i in data.get('mandatory_metric_ids') or []}
+        valid = sorted(MetricItem.objects.filter(is_header=False, id__in=requested).values_list('id', flat=True))
+        cycle.mandatory_metric_ids = valid or None
+        fields.append('mandatory_metric_ids')
     if data.get('reset'):
         cycle.selected_metric_ids = None
         fields.append('selected_metric_ids')
@@ -841,6 +875,7 @@ def save_cycle_questions(request):
         'status': 'success',
         'questions_fixed': cycle.selected_metric_ids is not None,
         'visible_columns': visible_columns(cycle),
+        'columns_applied_to': applied_to,
         'question_count': sum(t['metric_count'] for t in totals.values()),
         'max_marks': round(sum(t['max_marks'] for t in totals.values()), 2),
         'criteria_totals': totals,
@@ -891,7 +926,6 @@ def assignments_list(request):
         'assignments': assignments
     })
 
-@csrf_exempt
 @role_required('Admin')
 def save_assignment(request):
     """Assign individual auditors to departments with individual criteria assignment"""
@@ -946,7 +980,6 @@ def save_assignment(request):
 
     return JsonResponse({'status': 'success', 'assignment_id': assign.id, 'check': check_msg})
 
-@csrf_exempt
 @role_required('Admin')
 def add_department(request):
     """Provisions to add a new department dynamically and auto-provision HOD login"""
@@ -994,7 +1027,6 @@ def add_department(request):
         }
     })
 
-@csrf_exempt
 @role_required('Admin')
 def add_auditor(request):
     """Register individual auditor with automatic login and password generation"""
@@ -1055,7 +1087,6 @@ def download_auditor_template(request):
     writer.writerow(['Mr. M. Anand', 'MKCE', 'MECH', 'Assistant Professor', '3 - 5 years', 'anand.m@mkce.ac.in'])
     return response
 
-@csrf_exempt
 @role_required('Admin')
 def bulk_upload_auditors(request):
     """Bulk import auditors from CSV with automatic login and password generation"""

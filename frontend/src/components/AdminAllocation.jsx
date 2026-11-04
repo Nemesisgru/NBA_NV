@@ -367,7 +367,7 @@ export default function AdminAllocation({
 
                         {/* Auditor 1 individual criteria picker */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.7rem', color: '#a5b4fc', fontWeight: 700 }}>A1 Criteria:</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--chip-a1-text)', fontWeight: 700 }}>A1 Criteria:</span>
                           <button
                             onClick={() => toggleAllAuditorCriteria(row.department_id, 1)}
                             style={{
@@ -376,9 +376,9 @@ export default function AdminAllocation({
                               borderRadius: '3px',
                               fontWeight: 700,
                               cursor: 'pointer',
-                              border: '1px solid #4f46e5',
-                              background: isA1All ? '#4f46e5' : 'transparent',
-                              color: isA1All ? '#fff' : '#a5b4fc'
+                              border: '1px solid var(--chip-a1)',
+                              background: isA1All ? 'var(--chip-a1)' : 'transparent',
+                              color: isA1All ? '#fff' : 'var(--chip-a1-text)'
                             }}
                           >
                             {isA1All ? 'All (9)' : 'All'}
@@ -395,9 +395,9 @@ export default function AdminAllocation({
                                   borderRadius: '3px',
                                   fontWeight: isAssigned ? 700 : 500,
                                   cursor: 'pointer',
-                                  border: isAssigned ? '1px solid #6366f1' : '1px solid #23344d',
-                                  background: isAssigned ? '#4f46e5' : '#0f172a',
-                                  color: isAssigned ? '#ffffff' : '#64748b'
+                                  border: isAssigned ? '1px solid var(--chip-a1)' : '1px solid var(--chip-border)',
+                                  background: isAssigned ? 'var(--chip-a1)' : 'var(--chip-bg)',
+                                  color: isAssigned ? '#ffffff' : 'var(--chip-text)'
                                 }}
                               >
                                 {c.code}
@@ -429,7 +429,7 @@ export default function AdminAllocation({
 
                         {/* Auditor 2 individual criteria picker */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 700 }}>A2 Criteria:</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--chip-a2-text)', fontWeight: 700 }}>A2 Criteria:</span>
                           <button
                             onClick={() => toggleAllAuditorCriteria(row.department_id, 2)}
                             style={{
@@ -438,9 +438,9 @@ export default function AdminAllocation({
                               borderRadius: '3px',
                               fontWeight: 700,
                               cursor: 'pointer',
-                              border: '1px solid #0284c7',
-                              background: isA2All ? '#0284c7' : 'transparent',
-                              color: isA2All ? '#fff' : '#38bdf8'
+                              border: '1px solid var(--chip-a2)',
+                              background: isA2All ? 'var(--chip-a2)' : 'transparent',
+                              color: isA2All ? '#fff' : 'var(--chip-a2-text)'
                             }}
                           >
                             {isA2All ? 'All (9)' : 'All'}
@@ -457,9 +457,9 @@ export default function AdminAllocation({
                                   borderRadius: '3px',
                                   fontWeight: isAssigned ? 700 : 500,
                                   cursor: 'pointer',
-                                  border: isAssigned ? '1px solid #0284c7' : '1px solid #23344d',
-                                  background: isAssigned ? '#0284c7' : '#0f172a',
-                                  color: isAssigned ? '#ffffff' : '#64748b'
+                                  border: isAssigned ? '1px solid var(--chip-a2)' : '1px solid var(--chip-border)',
+                                  background: isAssigned ? 'var(--chip-a2)' : 'var(--chip-bg)',
+                                  color: isAssigned ? '#ffffff' : 'var(--chip-text)'
                                 }}
                               >
                                 {c.code}

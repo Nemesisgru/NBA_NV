@@ -5,3 +5,4 @@ node_modules/
 frontend/dist/
 login.md
 backend/generated_reports/
+backend/evidence_files/

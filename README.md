@@ -48,7 +48,7 @@ Skip this if the project already runs on this computer.
 2. Start the backend:
    ```powershell
    cd E:\NBA_NV\backend
-   python manage.py runserver 127.0.0.1:8000
+    
    ```
 3. Wait until the terminal shows `Starting development server at http://127.0.0.1:8000/`.
 4. Open your browser (Chrome, Edge, Firefox) and go to **http://127.0.0.1:8000/**. The login page opens.
@@ -201,7 +201,7 @@ Whenever an auditor enters evaluation items and the calculated score is **below 
 - **Columns**: the **Columns** button chooses, column by column, what the evaluation table shows during the audit: Unit / Sample, Verification Rule, Y / C / W / D Rubric, Max Marks, Items Checked, Valid Items, Benchmark, Validated Value, Marks Obt., %, Grade, Auditor Remarks, Evidence Status, Physical Check and Flag ATR. Code and Key Aspect & Indicator are always shown. Hiding *Items Checked* or *Valid Items* stops auditors from entering scores (the page warns about this).
 - Click **Save changes** to apply both.
 
-On the evaluation screen the Admin also gets a toolbar (search, grade filter, *Flagged for ATR only*, **Columns**, refresh); HODs and Auditors do not. The Admin's **Columns** button changes the Admin's own view straight away; **Save for this audit** stores the same columns for every auditor of the selected cycle, and **Undo** goes back to the saved ones. Which roles get the toolbar is set by `TOOLBAR_ROLES` in `frontend/src/components/CriterionEvaluation.jsx`; the column list lives in `frontend/src/auditColumns.js` (kept in sync with `DEFAULT_COLUMNS` in `backend/audit_core/question_scope.py`).
+On the evaluation screen the Admin also gets a toolbar (search, grade filter, *Flagged for ATR only*, **Columns**, refresh); HODs and Auditors do not. The Admin's **Columns** button there only changes the Admin's own view; the questions and the columns shown to auditors are fixed only in the **Audit Questions** tab. Which roles get the toolbar is set by `TOOLBAR_ROLES` in `frontend/src/components/CriterionEvaluation.jsx`; the column list lives in `frontend/src/auditColumns.js` (kept in sync with `DEFAULT_COLUMNS` in `backend/audit_core/question_scope.py`).
 
 ---
 
@@ -275,7 +275,14 @@ Tab **AI Assistant** (Admin, Auditor, HOD). Answers questions about the audit da
 - Explanations are plain text. References the model gives that are not in the verified data are removed, and numbers it states that are not in the data are flagged.
 - Chats and reports belong to the user who created them; nobody else (including other admins) can open them.
 
-**Definitions used** (shown under *How these figures are defined*): *submission completed* = the question has a grade; *evidence status* = what the auditor recorded (the app stores no evidence files); *evidence verified* = physical check "Matches claim"; *criterion compliant* = every question scored and criterion grade Y; *finding approved* = auditor sign-off on its ATR. Not configured in this application and reported as such: mandatory-evidence flags, per-action owners (the HOD is used), rubric versions.
+**Definitions used** (shown under *How these figures are defined*): *submission completed* = the question has a grade; *evidence uploaded* = at least one file is attached to the question; *evidence status* = what the auditor recorded (Complete / Partial / Not Uploaded); *evidence verified* = physical check "Matches claim"; *criterion compliant* = every question scored and criterion grade Y; *finding approved* = auditor sign-off on its ATR. An uploaded file never counts as verified or compliant.
+
+**Configured by the Admin / HOD** (shown as "not configured" until set):
+- *Mandatory evidence*: in **Audit Questions**, mark questions with **Mandatory?** (per audit cycle). Missing-evidence results then list mandatory questions without an uploaded file.
+- *Corrective-action owner*: the HOD enters **Action Owner** in the ATR form; if blank, the HOD is shown as owner. The assistant can filter by owner.
+- *Rubric version*: changing a Y/C/W/D threshold (Django Admin → Audit settings) raises the rubric version. Each cycle records the version in force when its first score was saved (cycles scored before this feature record the thresholds at upgrade time). Cycles with different thresholds are not compared; grades are always shown with the current thresholds, as elsewhere in the app.
+
+**Evidence documents**: on **Criteria Evaluation**, each question has an **Evidence (n)** button. The HOD of the department or the Admin uploads PDF / DOCX files (max 10 MB, checked by extension and file signature); everyone who may see the department can download them through an access-checked link; the uploader or the Admin can delete them. Text is extracted in a separate, isolated Python process with a 60-second limit, keeping real PDF page numbers and DOCX headings / paragraph / table numbers (DOCX has no pages, none are invented). No macros, embedded objects or links are executed or fetched. Scanned PDFs without text, password-protected and over-long files are marked **manual verification required** and are never treated as missing or non-compliant. Ask the assistant e.g. *"Search the evidence for industry MoU"*: it searches only the authorised department's extracted text (keyword search, no separate vector database) and quotes excerpts with their EV id and location; document text is treated as data, never as instructions. Files are stored in `backend/evidence_files/` (git-ignored, not web-served).
 
 **Draft reports** (Word `.docx`, Excel `.xlsx`, PDF): one department and cycle, built from a single verified snapshot. Sections: scope, generation time and data timestamp, executive summary, data coverage and missing information, criterion-wise observations, evidence references (as text, never opened), methodology, historical comparison (only identical question sets are compared), existing corrective actions and separately labelled AI suggestions, limitations, and empty review / signature fields. Every page says **DRAFT - requires auditor review**. Files are stored in `backend/generated_reports/` (git-ignored, not web-served), downloadable only by their owner, and deleted after 30 days (`python manage.py cleanup_ai_reports`). Spreadsheet cells that start with `= + - @` are escaped.
 
@@ -283,10 +290,12 @@ Tab **AI Assistant** (Admin, Auditor, HOD). Answers questions about the audit da
 
 **Setup**
 ```powershell
-# 1. Backend packages and database tables (adds python-docx; openpyxl and reportlab are used for Excel/PDF)
+# 1. Backend packages, database tables and the cache table
+#    (adds python-docx and pypdf; openpyxl and reportlab are used for Excel/PDF)
 cd E:\NBA_NV\backend
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py createcachetable
 
 # 2. Ollama (free, local): install from https://ollama.com/download, then
 ollama --version
@@ -305,15 +314,39 @@ Keep Ollama on `127.0.0.1` (its default). The server refuses Ollama URLs that ar
 **Verify**
 ```powershell
 cd E:\NBA_NV\backend
-python manage.py test audit_core     # 30 tests, model mocked, synthetic data
+python manage.py test audit_core     # 54 tests, model mocked, synthetic data
 ```
 Then log in, open **AI Assistant**, choose an audit cycle and click a starter question. To check the model alone: `ollama run qwen3.5:9b "Say OK"`.
 
+**Background jobs, cache and limits**
+- Draft reports and evidence text extraction are database-backed jobs (*pending → running → done / failed*). A job is claimed atomically, so it never runs twice. Jobs left in *running* by a restart are retried after 15 minutes (up to 3 attempts), and pending work resumes automatically the next time anyone opens the reports list or an evidence file.
+- Optional dedicated worker (recommended when several people generate reports): run `python manage.py run_ai_jobs` in a second terminal (`--once` processes the queue and exits).
+- The cache (rate limits, cached explanations, model status) is stored in the database table `audit_cache`, so limits survive restarts and are shared by all server processes.
+
+**Security**
+- CSRF protection is on for every API call (existing endpoints included). The React app reads the `csrftoken` cookie set by `/api/auth/me/` and sends it as `X-CSRFToken`. When using the Vite dev server, its origin (`http://localhost:3000`) is trusted via `AUDIT_CSRF_TRUSTED_ORIGINS`.
+
 **Limitations**
-- Evidence *document* analysis is not available: the application stores no evidence files (only an auditor-recorded status and free-text references on ATRs), and references are never fetched.
-- Report jobs run in a background thread of the web server; a restart while one is running marks it failed after 30 minutes. Rate limits use Django's in-memory cache, so they are per server process.
-- The app's API, including the assistant, uses session login without CSRF tokens (existing convention).
+- The local model on this laptop is slow (minutes per explanation); everything else works without it.
+- Evidence search is keyword-based; no OCR is implemented, so scanned documents must be checked by hand.
 - Hiding columns in *Audit Questions* restricts the evaluation table only; the AI Assistant, Criterion Summary, ATR and exports still show scores to HODs/Auditors.
+
+#### Using PostgreSQL (optional)
+SQLite remains the default. To run on PostgreSQL (driver `psycopg2-binary` is already installed here):
+```powershell
+# 1. Create a database and user (psql as the postgres superuser)
+#    CREATE USER krgi_audit WITH PASSWORD '<choose one>';
+#    CREATE DATABASE krgi_audit OWNER krgi_audit;
+# 2. Point the app at it (same terminal as runserver; never commit the password)
+$env:AUDIT_DB_ENGINE = "postgresql"; $env:AUDIT_DB_NAME = "krgi_audit"; $env:AUDIT_DB_USER = "krgi_audit"
+$env:AUDIT_DB_PASSWORD = "<the password>"; $env:AUDIT_DB_HOST = "127.0.0.1"; $env:AUDIT_DB_PORT = "5432"
+# 3. Create the tables, then copy the existing SQLite data across
+cd E:\NBA_NV\backend
+python manage.py migrate
+python manage.py createcachetable
+$env:AUDIT_DB_ENGINE = "sqlite"; python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.permission -e sessions -o data.json
+$env:AUDIT_DB_ENGINE = "postgresql"; python manage.py loaddata data.json
+```
 
 ---
 
@@ -336,6 +369,9 @@ All endpoints except `auth/login` require a logged-in session. "Scoped" means no
 | `/api/atr/update/` | `POST` | Any role, scoped | HOD: root cause, plan, dates, evidence, status, remarks. Auditor: sign-off and feedback. Admin: all |
 | `/api/cycle-questions/` | `GET` | Admin | All questions of a cycle grouped by criterion, with the fixed selection and evaluation columns |
 | `/api/cycle-questions/save/` | `POST` | Admin | Saves a cycle's questions (`metric_ids` or `reset`) and/or `visible_columns` |
+| `/api/evidence/?department_id=&cycle_id=[&metric_id=]` | `GET` | Any role, scoped | Evidence files of a department's audit |
+| `/api/evidence/upload/` | `POST` (multipart) | Admin, HOD of the department | Upload a PDF / DOCX for one question (text extracted in the background) |
+| `/api/evidence/<id>/`, `/api/evidence/<id>/download/` | `GET`, `DELETE` | Scoped; delete: uploader or Admin | File details / protected download |
 | `/api/ai/status/` | `GET` | Any role, scoped | Local model availability and the user's selectable colleges, departments, cycles |
 | `/api/ai/analytics/` | `POST` | Any role, scoped | Runs one allowlisted analytics operation (no AI) |
 | `/api/ai/chat/` | `POST` | Any role, scoped | Question → validated operation → verified result (explanation requested separately) |

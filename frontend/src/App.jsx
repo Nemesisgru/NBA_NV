@@ -163,6 +163,7 @@ export default function App() {
   }));
 
   const handleQuestionsSaved = (cycleId, saved) => {
+    const alsoApplied = new Set((saved.columns_applied_to || []).map(c => c.id));
     setBootstrap(prev => ({
       ...prev,
       cycles: prev.cycles.map(c => (c.id === cycleId ? {
@@ -170,7 +171,7 @@ export default function App() {
         criteria_totals: saved.criteria_totals,
         questions_fixed: saved.questions_fixed,
         visible_columns: saved.visible_columns
-      } : c))
+      } : alsoApplied.has(c.id) ? { ...c, visible_columns: saved.visible_columns } : c))
     }));
   };
 
@@ -268,7 +269,6 @@ export default function App() {
             userRole={userRole}
             editableCriteria={auditorCriteria}
             visibleColumns={currentCycle?.visible_columns}
-            onColumnsSaved={handleQuestionsSaved}
             onNavigateToATR={() => setActiveTab('atr')}
           />
         )}
@@ -322,6 +322,7 @@ export default function App() {
         {currentTab === 'questions' && (
           <AuditQuestionSetup
             selectedCycleId={selectedCycle}
+            cycles={bootstrap.cycles}
             onSaved={handleQuestionsSaved}
           />
         )}

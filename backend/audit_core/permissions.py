@@ -4,7 +4,8 @@ from django.http import JsonResponse
 from .models import AuditAssignment
 
 # ATR fields each role may change; anything else in the payload is ignored
-HOD_ATR_FIELDS = {'root_cause', 'action_plan', 'target_date', 'completed_date', 'evidence_ref', 'status', 'hod_remarks'}
+HOD_ATR_FIELDS = {'root_cause', 'action_plan', 'target_date', 'completed_date', 'evidence_ref', 'status', 'hod_remarks',
+                  'owner_name'}
 AUDITOR_ATR_FIELDS = {'auditor_signoff', 'auditor_feedback'}
 
 

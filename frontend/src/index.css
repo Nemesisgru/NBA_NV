@@ -60,6 +60,18 @@
   --badge-bg: rgba(245, 73, 39, 0.15);
   --badge-border: rgba(245, 73, 39, 0.35);
   --badge-text: #f85d3f;
+
+  /* Filter / criteria chips */
+  --chip-bg: #1e293b;
+  --chip-border: #23344d;
+  --chip-text: #94a3b8;
+  --chip-label: #94a3b8;
+  --chip-active-bg: #4f46e5;
+  --chip-alt-active-bg: #0891b2;
+  --chip-a1: #4f46e5;
+  --chip-a1-text: #a5b4fc;
+  --chip-a2: #0284c7;
+  --chip-a2-text: #38bdf8;
 }
 
 [data-theme="light"] {
@@ -122,6 +134,17 @@
   --seg-active-shadow: 0 6px 16px -6px rgba(20, 83, 45, 0.55);
   --scroll-thumb: #c5d3c8;
   --focus-ring: rgba(245, 73, 39, 0.22);
+
+  --chip-bg: #eef3ef;
+  --chip-border: #d5ddd6;
+  --chip-text: #2a3530;
+  --chip-label: #2a3530;
+  --chip-active-bg: #14532d;
+  --chip-alt-active-bg: #F54927;
+  --chip-a1: #14532d;
+  --chip-a1-text: #14532d;
+  --chip-a2: #c2410c;
+  --chip-a2-text: #c2410c;
 }
 
 * {

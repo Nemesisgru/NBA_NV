@@ -8,13 +8,11 @@
 """
 import logging
 import os
-import threading
 import uuid
 from datetime import timedelta
 from xml.sax.saxutils import escape
 
 from django.conf import settings
-from django.db import close_old_connections
 from django.utils import timezone
 
 from ..models import AIReport
@@ -30,7 +28,6 @@ FORMATS = {
     'pdf': ('application/pdf', 'pdf'),
 }
 DRAFT_LABEL = 'DRAFT - requires auditor review. Not an approved audit report.'
-STALE_AFTER = timedelta(minutes=30)
 
 
 def report_dir():
@@ -57,23 +54,13 @@ class _JobRequest:
 
 
 def start_report(report):
-    if settings.AUDIT_AI.get('REPORTS_INLINE'):
-        run_report(report.id)
-        return
-    threading.Thread(target=_run_in_thread, args=(report.id,), daemon=True, name=f'ai-report-{report.id}').start()
-
-
-def _run_in_thread(report_id):
-    try:
-        run_report(report_id)
-    finally:
-        close_old_connections()
+    from . import jobs
+    jobs.kick()
 
 
 def run_report(report_id):
+    """Runs a report job already claimed by jobs.claim() (status 'running')"""
     report = AIReport.objects.select_related('owner', 'department', 'cycle', 'compare_cycle').get(id=report_id)
-    report.status = 'running'
-    report.save(update_fields=['status'])
     try:
         req = _JobRequest(report.owner)
         if not req.role or not report.owner.is_active:
@@ -108,12 +95,6 @@ def run_report(report_id):
     report.finished_at = timezone.now()
     report.save(update_fields=['status', 'error', 'files', 'rubric_snapshot', 'data_as_of', 'finished_at'])
     cleanup_old_reports()
-
-
-def mark_stale(report):
-    if report.status in ('pending', 'running') and timezone.now() - report.created_at > STALE_AFTER:
-        report.status, report.error = 'failed', 'The report job did not finish (the server may have restarted).'
-        report.save(update_fields=['status', 'error'])
 
 
 def cleanup_old_reports():
@@ -197,6 +178,8 @@ def build_blocks(snapshot, story, report):
             ['Evidence recorded Partial', t['evidence_partial']],
             ['Evidence recorded Not Uploaded', t['evidence_not_uploaded']],
             ['Evidence verified (physical check matches claim)', _fmt(t['evidence_verified'])],
+            ['Questions with an evidence file uploaded', _fmt(t['evidence_uploaded'])],
+            ['Evidence files needing manual verification', t['evidence_files_manual_check']],
         ]),
         ('h2', 'Questions with missing, partial or unassessed evidence'),
         ('table', ['Criterion', 'Question', 'Key aspect', 'Evidence', 'Physical check', 'Grade'],
@@ -218,7 +201,13 @@ def build_blocks(snapshot, story, report):
            f"{r['atr_id'] or '-'} {r['atr_status']}", _fmt(r['finding_approved'])] for r in snapshot['findings']['rows'][:150]]
          or [['-', '-', 'No findings', '-', '-', '-', '-', '-']]),
         ('h1', '6. Evidence references'),
-        ('p', 'References recorded by the department on Action Taken Reports. They are listed as text and were not opened or verified by this system.'),
+        ('h2', 'Uploaded evidence files'),
+        ('p', 'Files uploaded for the questions of this audit. Uploading a file does not verify it or make a question compliant.'),
+        ('table', ['Evidence', 'Criterion', 'Question', 'File', 'Text extraction', 'Pages'],
+         [[r['evidence_id'], r['criterion'], r['question'], r['file'], r['extraction'], _fmt(r['pages'])]
+          for r in snapshot['evidence_files']['rows'][:150]] or [['-', '-', '-', 'No files uploaded', '-', '-']]),
+        ('h2', 'References recorded on Action Taken Reports'),
+        ('p', 'Listed as text; links were not opened or verified by this system.'),
         ('table', ['ATR', 'Criterion', 'Question', 'Evidence reference', 'Status', 'Signed off'],
          [[r['atr_id'], r['criterion'], r['question'], r['evidence_ref'], r['status'], _fmt(r['auditor_signoff'])]
           for r in snapshot['evidence_refs']['rows'][:150]] or [['-', '-', '-', 'No evidence references recorded', '-', '-']]),
@@ -228,7 +217,10 @@ def build_blocks(snapshot, story, report):
         ('bullet', 'Criterion status uses the existing grade meanings (Y Compliant, C Concern, W Weakness, D Deficiency) '
                    'and is only given when every question of the criterion is scored.'),
         ('bullet', 'Questions fixed for this cycle by the Admin: ' + ('yes' if snapshot['rubric']['questions_fixed_for_cycle'] else 'no (all questions)')),
-        ('bullet', 'Rubric version: not tracked by the application.'),
+        ('bullet', 'Rubric version of this cycle: ' + snapshot['rubric']['version'] +
+                   f" (current: v{snapshot['rubric']['current_version']})" +
+                   ('; thresholds changed since this cycle was scored, grades use the current thresholds.'
+                    if snapshot['rubric']['thresholds_changed_since_cycle'] else '.')),
     ]
 
     cmp_ = snapshot['comparison']
@@ -267,10 +259,12 @@ def build_blocks(snapshot, story, report):
     limitations = [
         'This is a draft generated from the audit database. It does not certify compliance or approve the audit.',
         analytics.DEFINITIONS['evidence_status'],
+        analytics.DEFINITIONS['evidence_uploaded'],
         analytics.DEFINITIONS['mandatory_evidence'],
         analytics.DEFINITIONS['corrective_action_owner'],
         analytics.DEFINITIONS['rubric_version'],
-        'Evidence documents are not stored in the application, so their content was not analysed.',
+        'Uploaded evidence files marked "manual verification required" (scanned or unreadable) must be checked by hand; '
+        'they are not treated as missing or non-compliant.',
     ]
     if story and not story.get('unavailable'):
         limitations.append('AI-drafted text may be inaccurate; the verified tables are authoritative.')
@@ -400,6 +394,9 @@ def write_xlsx(path, snapshot, story, report):
                                  'Action plan entered', 'Action plan', 'Auditor sign-off'],
           [[r['atr_id'], r['criterion'], r['question'], r['status'], r['target_date'], r['days_overdue'], r['owner'],
             _fmt(r['action_plan_entered']), r['action_plan'], _fmt(r['auditor_signoff'])] for r in snapshot['corrective_actions']['rows']])
+    sheet('Evidence files', ['Evidence', 'Criterion', 'Question', 'File', 'Text extraction', 'Pages', 'Uploaded at'],
+          [[r['evidence_id'], r['criterion'], r['question'], r['file'], r['extraction'], r['pages'], r['uploaded_at']]
+           for r in snapshot['evidence_files']['rows']])
     sheet('Evidence references', ['ATR', 'Criterion', 'Question', 'Evidence reference (not verified)', 'Status', 'Signed off'],
           [[r['atr_id'], r['criterion'], r['question'], r['evidence_ref'], r['status'], _fmt(r['auditor_signoff'])]
            for r in snapshot['evidence_refs']['rows']])

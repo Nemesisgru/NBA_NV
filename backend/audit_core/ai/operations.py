@@ -68,6 +68,16 @@ def _cycle(value):
     return cycle
 
 
+def _text(max_len):
+    def check(value):
+        if value in (None, ''):
+            return None
+        if not isinstance(value, str) or len(value) > max_len:
+            raise OperationError(f'Expected text of at most {max_len} characters')
+        return value.strip()
+    return check
+
+
 def _limit(value):
     if value in (None, ''):
         return analytics.ROW_LIMIT
@@ -83,15 +93,15 @@ OPERATIONS = {
         'label': 'Summarise the audit',
     },
     'missing_evidence': {
-        'fn': lambda scope, f: analytics.get_missing_evidence(scope, f['criterion'], f['limit']),
-        'filters': {'criterion': _criterion, 'limit': _limit},
+        'fn': lambda scope, f: analytics.get_missing_evidence(scope, f['criterion'], f['limit'], f['mandatory_only']),
+        'filters': {'criterion': _criterion, 'limit': _limit, 'mandatory_only': _bool},
         'label': 'List missing or partial evidence',
     },
     'pending_corrective_actions': {
         'fn': lambda scope, f: analytics.get_pending_corrective_actions(
-            scope, f['criterion'], f['status'], f['overdue_only'], f['due_before'], f['limit']),
+            scope, f['criterion'], f['status'], f['overdue_only'], f['due_before'], f['limit'], f['owner']),
         'filters': {'criterion': _criterion, 'status': _choice(ATR_STATUSES), 'overdue_only': _bool,
-                    'due_before': _date, 'limit': _limit},
+                    'due_before': _date, 'limit': _limit, 'owner': _text(100)},
         'label': 'Pending / overdue corrective actions',
     },
     'criterion_findings': {
@@ -103,6 +113,11 @@ OPERATIONS = {
         'fn': lambda scope, f: analytics.compare_audit_cycles(scope, f['compare_cycle_id']),
         'filters': {'compare_cycle_id': _cycle},
         'label': 'Compare with another audit cycle',
+    },
+    'search_evidence': {
+        'fn': lambda scope, f: analytics.search_evidence_text(scope, f['query'] or '', f['criterion']),
+        'filters': {'query': _text(200), 'criterion': _criterion},
+        'label': 'Search the text of uploaded evidence',
     },
     'generate_report': {
         'fn': None,  # handled by the report job (reports.py); listed so the model can propose it

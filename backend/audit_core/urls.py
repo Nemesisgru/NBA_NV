@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .ai import views as ai_views
+from . import evidence
 
 urlpatterns = [
     path('bootstrap/', views.bootstrap_data, name='bootstrap_data'),
@@ -19,6 +20,10 @@ urlpatterns = [
     path('auditors/add/', views.add_auditor, name='add_auditor'),
     path('auditors/template/', views.download_auditor_template, name='download_auditor_template'),
     path('auditors/bulk-upload/', views.bulk_upload_auditors, name='bulk_upload_auditors'),
+    path('evidence/', evidence.evidence_list, name='evidence_list'),
+    path('evidence/upload/', evidence.evidence_upload, name='evidence_upload'),
+    path('evidence/<int:evidence_id>/', evidence.evidence_detail, name='evidence_detail'),
+    path('evidence/<int:evidence_id>/download/', evidence.evidence_download, name='evidence_download'),
     path('ai/status/', ai_views.ai_status, name='ai_status'),
     path('ai/analytics/', ai_views.ai_analytics, name='ai_analytics'),
     path('ai/chat/', ai_views.ai_chat, name='ai_chat'),

@@ -85,7 +85,8 @@ function ResultView({ result, onOpenCriterion }) {
           <Kpi label="Overall score" value={t.percentage !== null ? `${t.percentage}%` : 'No scores'} sub={`${fmt(t.marks_obtained)} / ${fmt(t.max_marks)} marks`} color="var(--primary)" />
           <Kpi label="Grade / status" value={t.grade || '-'} sub={t.compliance} color={t.grade ? `var(--grade-${t.grade.toLowerCase()})` : undefined} />
           <Kpi label="Submissions completed" value={fmtRatio(t.submission_completed)} />
-          <Kpi label="Evidence verified" value={fmtRatio(t.evidence_verified)} sub={`recorded complete: ${fmtRatio(t.evidence_complete)}`} />
+          <Kpi label="Evidence uploaded" value={fmtRatio(t.evidence_uploaded)} sub={t.evidence_files_manual_check ? `${t.evidence_files_manual_check} file(s) need manual verification` : 'questions with a file'} />
+          <Kpi label="Evidence verified" value={fmtRatio(t.evidence_verified)} sub={`auditor recorded complete: ${fmtRatio(t.evidence_complete)}`} />
           <Kpi label="Findings" value={t.findings} sub={`ATR open ${t.atr_open} · in progress ${t.atr_in_progress} · closed ${t.atr_closed} · approved ${t.findings_approved}`} />
         </div>
         <CriterionBars rows={result.criteria || []} />
@@ -110,12 +111,28 @@ function ResultView({ result, onOpenCriterion }) {
           <Kpi label="Not uploaded" value={fmtRatio(t.evidence_not_uploaded)} color="var(--grade-d)" />
           <Kpi label="Partial" value={fmtRatio(t.evidence_partial)} color="var(--grade-w)" />
           <Kpi label="Not assessed yet" value={fmtRatio(t.not_assessed)} />
+          <Kpi label="Mandatory without file" value={t.mandatory_configured ? fmtRatio(t.mandatory_without_file) : 'Not configured'} color="var(--primary)" />
         </div>
         <DataTable rows={result.rows} columns={[
           { key: 'department', label: 'Department' }, { key: 'criterion', label: 'Criterion', render: critCode },
           { key: 'question', label: 'Question' }, { key: 'key_aspect', label: 'Key aspect' },
-          { key: 'evidence_status', label: 'Evidence' }, { key: 'physical_check', label: 'Physical check' },
+          { key: 'evidence_status', label: 'Evidence' }, { key: 'mandatory', label: 'Mandatory' },
+          { key: 'files_uploaded', label: 'Files' }, { key: 'physical_check', label: 'Physical check' },
           { key: 'grade', label: 'Grade', render: r => gradeBadge(r.grade) }]} />
+      </>
+    );
+  } else if (result.operation === 'search_evidence') {
+    body = (
+      <>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+          <Kpi label="Matching passages" value={t.matches_listed} sub={result.query_terms?.length ? `words: ${result.query_terms.join(', ')}` : 'no search words'} />
+          <Kpi label="Files in scope" value={t.files_in_scope} sub={t.files_needing_manual_check ? `${t.files_needing_manual_check} need manual verification` : ''} />
+        </div>
+        <DataTable rows={result.rows} columns={[
+          { key: 'evidence_id', label: 'Evidence', render: r => <a href={`/api/evidence/${r.evidence_id.slice(3)}/download/`}>{r.evidence_id}</a> },
+          { key: 'file', label: 'File' }, { key: 'location', label: 'Location' },
+          { key: 'criterion', label: 'Criterion', render: critCode }, { key: 'question', label: 'Question' },
+          { key: 'excerpt', label: 'Excerpt (quoted from the document)', render: r => <span style={{ fontStyle: 'italic' }}>"{r.excerpt}"</span> }]} />
       </>
     );
   } else if (result.operation === 'pending_corrective_actions') {

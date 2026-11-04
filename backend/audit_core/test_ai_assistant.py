@@ -428,3 +428,29 @@ class ColumnRestrictionTests(AIAssistantBase):
         self.assertEqual(ev.valid_items, 50)            # visible input saved
         self.assertEqual(ev.grade, 'W')                 # grade still calculated on the server
         self.assertIn('IGNORE', ev.auditor_remarks)     # hidden remarks not wiped
+
+
+class ApplyColumnsToOtherAuditsTests(AIAssistantBase):
+    def test_columns_can_be_applied_to_other_audits(self):
+        self.login(self.admin)
+        hide = {'marksObtained': False, 'percentage': False, 'grade': False}
+        r = self.post('/api/cycle-questions/save/', {'cycle_id': self.prev.id, 'visible_columns': hide,
+                                                     'apply_columns_to': [self.cur.id]})
+        self.assertEqual([c['id'] for c in r.json()['columns_applied_to']], [self.cur.id])
+        self.assertIsNone(AuditCycle.objects.get(id=self.other.id).visible_columns)      # not chosen: unchanged
+        # The auditor allocated in the current cycle now gets no marks / % / grade
+        AuditAssignment.objects.create(cycle=self.cur, department=self.a1, auditor_1=self.auditor, auditor_1_criteria=['C1', 'C2'])
+        self.login(self.aud_user)
+        data = self.client.get(f'/api/criteria/C1/?department_id={self.a1.id}&cycle_id={self.cur.id}').json()
+        q = next(m for m in data['metrics'] if not m['is_header'])
+        for f in ('marks_obtained', 'percentage', 'grade'):
+            self.assertNotIn(f, q['evaluation'])
+        # Question selection is not copied
+        self.assertIsNone(AuditCycle.objects.get(id=self.cur.id).selected_metric_ids)
+
+    def test_apply_to_all(self):
+        self.login(self.admin)
+        r = self.post('/api/cycle-questions/save/', {'cycle_id': self.cur.id, 'visible_columns': {'grade': False},
+                                                     'apply_columns_to': 'all'})
+        self.assertEqual(len(r.json()['columns_applied_to']), 2)
+        self.assertTrue(all(c.visible_columns['grade'] is False for c in AuditCycle.objects.all()))

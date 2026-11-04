@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   CheckSquare, Square, Filter, Search, Save, AlertTriangle, 
-  ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2 
+  ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2, Paperclip
 } from 'lucide-react';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
 import ColumnPicker from './ColumnPicker';
+import EvidencePanel from './EvidencePanel';
 import { normalizeColumns, sameColumns } from '../auditColumns';
 
 // Round to at most two decimal places for display (trailing zeros dropped)
@@ -33,7 +34,6 @@ export default function CriterionEvaluation({
   userRole,
   editableCriteria,
   visibleColumns,
-  onColumnsSaved,
   onNavigateToATR
 }) {
   const [criterionData, setCriterionData] = useState(null);
@@ -52,31 +52,14 @@ export default function CriterionEvaluation({
   // Columns fixed for this audit (Audit Questions tab). The server sends the current setting with every
   // criterion it loads, so a change by the Admin applies without logging in again; for other logins the
   // server also leaves out the data of hidden columns. The Admin can change the columns here for their own
-  // view and save them for all auditors of the audit.
+  // view only; the columns shown to auditors are fixed in the Audit Questions tab.
   const [serverColumns, setServerColumns] = useState(null);
+  const [evidenceFor, setEvidenceFor] = useState(null);
   const columnsKey = JSON.stringify(serverColumns || visibleColumns || null);
   const auditColumns = useMemo(() => normalizeColumns(serverColumns || visibleColumns), [columnsKey]);
   const [col, setCol] = useState(auditColumns);
-  const [columnSaveState, setColumnSaveState] = useState(null);
-  useEffect(() => { setCol(auditColumns); setColumnSaveState(null); }, [auditColumns, selectedCycleId]);
+  useEffect(() => { setCol(auditColumns); }, [auditColumns, selectedCycleId]);
   const columnsChanged = !sameColumns(col, auditColumns);
-
-  const saveColumnsForAudit = async () => {
-    setColumnSaveState('saving');
-    try {
-      const res = await fetch('/api/cycle-questions/save/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycle_id: selectedCycleId, visible_columns: col })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Save failed');
-      onColumnsSaved?.(selectedCycleId, json);
-      setColumnSaveState('saved');
-    } catch {
-      setColumnSaveState('error');
-    }
-  };
 
 
   // Fetch criterion metrics and evaluations
@@ -441,34 +424,15 @@ export default function CriterionEvaluation({
           </button>
         </div>
 
-        {/* Columns, refresh & save status */}
+        {/* Columns (Admin's own view only), refresh & save status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative', flexWrap: 'wrap' }}>
           <ColumnPicker
             value={col}
-            onChange={(next) => { setCol(next); setColumnSaveState(null); }}
-            title="COLUMNS IN THIS VIEW"
+            onChange={setCol}
+            title="COLUMNS IN YOUR VIEW"
             highlight={columnsChanged}
-            footer={'Changes apply to your view now. Use "Save for this audit" to show the same columns to every auditor in this audit.'}
+            footer="Changes apply only to your view on this page. The columns shown to auditors are fixed in the Audit Questions tab."
           />
-          {columnsChanged && (
-            <>
-              <button className="btn btn-primary btn-sm" onClick={saveColumnsForAudit} disabled={columnSaveState === 'saving'}
-                title="Save these columns for all auditors in this audit cycle">
-                <Save size={13} /> Save for this audit
-              </button>
-              <button className="btn btn-outline btn-sm" onClick={() => setCol(auditColumns)} title="Back to the columns saved for this audit">
-                Undo
-              </button>
-            </>
-          )}
-          {columnSaveState === 'saved' && !columnsChanged && (
-            <span style={{ fontSize: '0.725rem', color: 'var(--grade-y)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <CheckCircle2 size={13} /> Columns saved for this audit
-            </span>
-          )}
-          {columnSaveState === 'error' && (
-            <span style={{ fontSize: '0.725rem', color: 'var(--grade-d)' }}>Could not save columns</span>
-          )}
 
           <button
             onClick={fetchCriterion}
@@ -573,6 +537,20 @@ export default function CriterionEvaluation({
                           {item.auditor_verifies}
                         </div>
                       )}
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEvidenceFor(item)}
+                          className="seg-meta"
+                          style={{ cursor: 'pointer', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                          title="View or upload evidence files for this question"
+                        >
+                          <Paperclip size={11} /> Evidence ({(item.evidence_files || []).length})
+                        </button>
+                        {item.evidence_mandatory && (
+                          <span className="seg-meta" style={{ color: 'var(--primary)', borderColor: 'var(--primary-border)' }}>Mandatory evidence</span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Sampling info */}
@@ -746,6 +724,15 @@ export default function CriterionEvaluation({
         </div>
       </div>
 
+      {evidenceFor && (
+        <EvidencePanel
+          question={evidenceFor}
+          departmentId={selectedDepartmentId}
+          cycleId={selectedCycleId}
+          onClose={() => setEvidenceFor(null)}
+          onChanged={fetchCriterion}
+        />
+      )}
     </div>
   );
 }

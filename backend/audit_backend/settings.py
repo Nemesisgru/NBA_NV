@@ -28,6 +28,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+# CSRF protection is on for every API call; the React app sends the token from the csrftoken cookie.
+# The Vite dev server (port 3000) proxies to Django, so its origin must be trusted.
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.environ.get('AUDIT_CSRF_TRUSTED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if o.strip()
+]
+
 
 # Application definition
 
@@ -75,11 +81,35 @@ WSGI_APPLICATION = 'audit_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
+if os.environ.get('AUDIT_DB_ENGINE', 'sqlite').lower() in ('postgres', 'postgresql'):
+    # Optional PostgreSQL (see README "Using PostgreSQL"); credentials come from the environment only
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('AUDIT_DB_NAME', 'krgi_audit'),
+            'USER': os.environ.get('AUDIT_DB_USER', 'krgi_audit'),
+            'PASSWORD': os.environ.get('AUDIT_DB_PASSWORD', ''),
+            'HOST': os.environ.get('AUDIT_DB_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('AUDIT_DB_PORT', '5432'),
+            'CONN_MAX_AGE': 60,
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            # AUDIT_DB_PATH lets a test run point at a copy of the database
+            'NAME': os.environ.get('AUDIT_DB_PATH', BASE_DIR / 'db.sqlite3'),
+            'OPTIONS': {'timeout': 20},
+        }
+    }
+
+# Database-backed cache: rate limits and cached results survive restarts and are shared by all
+# server processes. Create the table once with: python manage.py createcachetable
+CACHES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        # AUDIT_DB_PATH lets a test run point at a copy of the database
-        'NAME': os.environ.get('AUDIT_DB_PATH', BASE_DIR / 'db.sqlite3'),
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'audit_cache',
     }
 }
 
@@ -148,7 +178,22 @@ AUDIT_AI = {
     'REPORT_DIR': os.environ.get('AUDIT_AI_REPORT_DIR', str(BASE_DIR / 'generated_reports')),
     'REPORT_RETENTION_DAYS': int(os.environ.get('AUDIT_AI_REPORT_RETENTION_DAYS', '30')),
     'MAX_MESSAGE_CHARS': 1000,
+    # Background jobs (reports, evidence text extraction)
+    'JOB_STALE_MINUTES': int(os.environ.get('AUDIT_AI_JOB_STALE_MINUTES', '15')),
+    'JOB_MAX_ATTEMPTS': int(os.environ.get('AUDIT_AI_JOB_MAX_ATTEMPTS', '3')),
 }
+
+# Evidence documents uploaded per question. Stored outside every served folder.
+AUDIT_EVIDENCE = {
+    'DIR': os.environ.get('AUDIT_EVIDENCE_DIR', str(BASE_DIR / 'evidence_files')),
+    'MAX_MB': int(os.environ.get('AUDIT_EVIDENCE_MAX_MB', '10')),
+    'TYPES': ['pdf', 'docx'],
+    'EXTRACT_TIMEOUT': int(os.environ.get('AUDIT_EVIDENCE_EXTRACT_TIMEOUT', '60')),
+    'MAX_PAGES': 500,
+    'MAX_TEXT_CHARS': 2_000_000,
+}
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2_621_440
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2_621_440
 
 LOGGING = {
     'version': 1,
