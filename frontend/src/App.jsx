@@ -8,7 +8,6 @@ import AdminAllocation from './components/AdminAllocation';
 import ComparisonPage, { COMPARE_SELECTION_KEY } from './components/ComparisonPage';
 import AuditQuestionSetup from './components/AuditQuestionSetup';
 import AIAssistant from './components/AIAssistant';
-import CycleFilterBar from './components/CycleFilterBar';
 import LoginPage from './components/LoginPage';
 import { Loader2 } from 'lucide-react';
 
@@ -144,15 +143,6 @@ export default function App() {
         .flatMap(a => a.assigned_criteria || [])
     : null;
 
-  // Tabs that show the year/cycle filter bar (synced with the ribbon cycle picker)
-  const cycleFilterTabs = {
-    criteria: 'criteria evaluation',
-    summary: 'criterion summary',
-    dashboard: 'KRGI dashboard',
-    atr: 'action taken reports',
-    allocations: 'auditor allocations',
-    questions: 'audit questions'
-  };
 
   // Criterion question counts / max marks for the questions fixed in the selected cycle
   const currentCycle = bootstrap.cycles.find(c => c.id === selectedCycle);
@@ -250,15 +240,6 @@ export default function App() {
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '24px', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
-        {cycleFilterTabs[currentTab] && (
-          <CycleFilterBar
-            cycles={bootstrap.cycles}
-            selectedCycle={selectedCycle}
-            setSelectedCycle={setSelectedCycle}
-            tabLabel={cycleFilterTabs[currentTab]}
-          />
-        )}
-
         {currentTab === 'criteria' && (
           <CriterionEvaluation
             criteriaList={cycleCriteria}

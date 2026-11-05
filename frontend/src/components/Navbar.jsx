@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Building2, Calendar, ShieldCheck, UserCheck, ExternalLink, Download, FileText, LogOut
+  Building2, Calendar, Filter, ShieldCheck, UserCheck, ExternalLink, Download, FileText, LogOut
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
@@ -41,6 +41,18 @@ export default function Navbar({
 
   // Sliding "magic" indicator: follows the active tab's position and width
   const { containerRef: navRef, itemRef, indicator } = useSlidingIndicator(activeTab, [allowedTabs.join(','), isHod]);
+
+  // Academic year + semester/cycle: the single cycle selection for every tab
+  const currentCycle = cycles.find(c => c.id === selectedCycle);
+  const years = [...new Set(cycles.map(c => c.academic_year))].sort().reverse();
+  const yearCycles = cycles.filter(c => c.academic_year === currentCycle?.academic_year);
+  const handleYearChange = (year) => {
+    const sameKind = cycles.find(c => c.academic_year === year && c.semester === currentCycle?.semester
+      && c.cycle_type === currentCycle?.cycle_type);
+    const first = sameKind || cycles.find(c => c.academic_year === year);
+    if (first) setSelectedCycle(first.id);
+  };
+  const label = { fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 };
 
   const excelExportUrl = `/api/export/department-excel/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
   const pdfExportUrl = `/api/export/department-pdf/?department_id=${selectedDepartment || ''}&cycle_id=${selectedCycle || ''}`;
@@ -94,83 +106,8 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Global Context Pickers and Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Institute Picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Building2 size={16} color="var(--text-secondary)" />
-            <select
-              value={selectedInstitute}
-              onChange={(e) => {
-                setSelectedInstitute(e.target.value);
-                const firstInInst = departments.find(d => d.institute_code === e.target.value);
-                if (firstInInst) setSelectedDepartment(firstInInst.id);
-              }}
-              disabled={isHod}
-              style={{ width: '105px', padding: '6px 8px', fontSize: '0.8rem' }}
-            >
-              {institutes.map(inst => (
-                <option key={inst.id} value={inst.code}>{inst.code}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Department Picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Dept:</span>
-            <select
-              value={selectedDepartment || ''}
-              onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-              disabled={isHod}
-              style={{ width: '150px', padding: '6px 8px', fontSize: '0.8rem' }}
-            >
-              {filteredDepartments.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.code} - {d.name.length > 16 ? d.name.slice(0, 16) + '...' : d.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Audit Cycle Picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={16} color="var(--text-secondary)" />
-            <select
-              value={selectedCycle || ''}
-              onChange={(e) => setSelectedCycle(Number(e.target.value))}
-              style={{ width: '185px', padding: '6px 8px', fontSize: '0.8rem' }}
-            >
-              {cycles.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.academic_year} {c.semester} ({c.cycle_type})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Quick Department Download Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <a 
-              href={excelExportUrl}
-              download
-              className="btn btn-outline btn-sm"
-              style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
-              title="Download Department Audit Report in Excel / CSV"
-            >
-              <Download size={13} /> Excel
-            </a>
-            <a 
-              href={pdfExportUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-outline btn-sm"
-              style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
-              title="View & Print Official PDF Report"
-            >
-              <FileText size={13} /> PDF
-            </a>
-          </div>
-
+        {/* Account actions, top right corner aligned with the title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginLeft: 'auto' }}>
           {/* Theme Toggle switch for logged-in sessions across all roles */}
           <div style={{
             display: 'flex',
@@ -230,6 +167,103 @@ export default function Navbar({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Single selection ribbon: college, department, academic year, semester / cycle and exports */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '14px',
+        padding: '8px 24px',
+        borderBottom: '1px solid var(--border-subtle)',
+        flexWrap: 'wrap'
+      }}>
+          {/* Institute Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Building2 size={16} color="var(--text-secondary)" />
+            <select
+              value={selectedInstitute}
+              onChange={(e) => {
+                setSelectedInstitute(e.target.value);
+                const firstInInst = departments.find(d => d.institute_code === e.target.value);
+                if (firstInInst) setSelectedDepartment(firstInInst.id);
+              }}
+              disabled={isHod}
+              style={{ width: '105px', padding: '6px 8px', fontSize: '0.8rem' }}
+            >
+              {institutes.map(inst => (
+                <option key={inst.id} value={inst.code}>{inst.code}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Department Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Dept:</span>
+            <select
+              value={selectedDepartment || ''}
+              onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+              disabled={isHod}
+              style={{ width: '150px', padding: '6px 8px', fontSize: '0.8rem' }}
+            >
+              {filteredDepartments.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.code} - {d.name.length > 16 ? d.name.slice(0, 16) + '...' : d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Academic Year Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Filter size={15} color="var(--primary)" />
+            <span style={label}>Academic Year:</span>
+            <select
+              value={currentCycle?.academic_year || ''}
+              onChange={(e) => handleYearChange(e.target.value)}
+              style={{ width: '115px', padding: '6px 8px', fontSize: '0.8rem' }}
+            >
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+
+          {/* Semester / Cycle Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Calendar size={15} color="var(--primary)" />
+            <span style={label}>Semester / Cycle:</span>
+            <select
+              value={selectedCycle || ''}
+              onChange={(e) => setSelectedCycle(Number(e.target.value))}
+              style={{ width: '180px', padding: '6px 8px', fontSize: '0.8rem' }}
+            >
+              {yearCycles.map(c => (
+                <option key={c.id} value={c.id}>{c.semester} ({c.cycle_type})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quick Department Download Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <a 
+              href={excelExportUrl}
+              download
+              className="btn btn-outline btn-sm"
+              style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+              title="Download Department Audit Report in Excel / CSV"
+            >
+              <Download size={13} /> Excel
+            </a>
+            <a 
+              href={pdfExportUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-outline btn-sm"
+              style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+              title="View & Print Official PDF Report"
+            >
+              <FileText size={13} /> PDF
+            </a>
+          </div>
       </div>
 
       {/* Navigation Tabs: words only, with a sliding curve-outside indicator */}
