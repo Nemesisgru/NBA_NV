@@ -117,3 +117,46 @@ def hidden_fields(cycle, role):
             metric.update(COLUMN_FIELDS[key]['metric'])
             evaluation.update(COLUMN_FIELDS[key]['evaluation'])
     return metric, evaluation
+
+
+# Output fields derived from each evaluation column. When the Admin hides a column for an audit, these are
+# withheld (set to None) for HODs and Auditors everywhere: Criterion Summary, ATR, exports and the AI Assistant.
+DERIVED_OUTPUT_KEYS = {
+    'itemsChecked': {'items_checked'},
+    'validItems': {'valid_items'},
+    'validatedValue': {'validated_value'},
+    'maxMarks': {'max_marks'},
+    'marksObtained': {'marks_obtained', 'validated_marks'},
+    'percentage': {'percentage', 'current_percent', 'previous_percent', 'change', 'highest_percent',
+                   'lowest_percent', 'average_percent', 'spread', 'rank', 'highest', 'lowest'},
+    'grade': {'grade', 'current_grade', 'count_y', 'count_c', 'count_w', 'count_d', 'compliance',
+              'is_compliant', 'by_grade'},
+    'remarks': {'auditor_remarks'},
+    'evidenceStatus': {'evidence_status'},
+    'physicalCheck': {'physical_check_result', 'physical_check'},
+}
+
+
+def hidden_output_keys(cycles, role):
+    """Keys to withhold for this role; `cycles` is one cycle or several (e.g. both sides of a comparison)"""
+    if role == 'Admin':
+        return set()
+    keys = set()
+    for cycle in (cycles if isinstance(cycles, (list, tuple, set)) else [cycles]):
+        if cycle is None:
+            continue
+        for col, shown in visible_columns(cycle).items():
+            if not shown:
+                keys |= DERIVED_OUTPUT_KEYS.get(col, set())
+    return keys
+
+
+def redact(obj, keys):
+    """Copy of a JSON-like structure with the given keys set to None at every level"""
+    if not keys:
+        return obj
+    if isinstance(obj, dict):
+        return {k: (None if k in keys else redact(v, keys)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact(v, keys) for v in obj]
+    return obj

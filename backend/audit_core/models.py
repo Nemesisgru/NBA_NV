@@ -136,8 +136,9 @@ class AuditEvaluation(models.Model):
     percentage = models.FloatField(null=True, blank=True)
     grade = models.CharField(max_length=2, blank=True)
     auditor_remarks = models.TextField(blank=True)
-    evidence_status = models.CharField(max_length=50, default='Complete')
-    physical_check_result = models.CharField(max_length=50, default='Matches claim')
+    # Neutral defaults: nothing counts as uploaded or verified until the auditor records it
+    evidence_status = models.CharField(max_length=50, default='Not Uploaded')
+    physical_check_result = models.CharField(max_length=50, default='Not checked')
     is_flagged_for_atr = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -282,3 +283,13 @@ class EvidenceChunk(models.Model):
 
     class Meta:
         ordering = ['evidence_id', 'order']
+
+
+class AccountSecurity(models.Model):
+    """Per-login security state: a new or reset password must be changed at the next login"""
+    user = models.OneToOneField('auth.User', on_delete=models.CASCADE, related_name='security')
+    must_change_password = models.BooleanField(default=True)
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Security for {self.user}"

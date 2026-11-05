@@ -48,11 +48,12 @@ Skip this if the project already runs on this computer.
 2. Start the backend:
    ```powershell
    cd E:\NBA_NV\backend
-    
+   python manage.py runserver 127.0.0.1:8000
    ```
+   Optional, same terminal, before `runserver`: `$env:AUDIT_DEBUG = "true"` shows detailed error pages while developing, and `$env:AUDIT_ADMIN_ENABLED = "true"` turns on Django Admin. Both are off by default because they must stay off on the website.
 3. Wait until the terminal shows `Starting development server at http://127.0.0.1:8000/`.
 4. Open your browser (Chrome, Edge, Firefox) and go to **http://127.0.0.1:8000/**. The login page opens.
-   - Django Admin: http://127.0.0.1:8000/admin/
+   - Django Admin (only when `AUDIT_ADMIN_ENABLED=true`): http://127.0.0.1:8000/admin/
 5. **Keep this terminal open** while you use the website. Closing it (or pressing `Ctrl+C`) stops the server, and the website then shows *"Cannot reach the server. Make sure the Django backend is running."*
 
 ### Every time: Option B – while editing frontend code (two terminals)
@@ -112,40 +113,32 @@ Everyone signs in on the **login page** that opens at `/`. The login is kept in 
 | Criterion Summary, Excel / PDF export | All departments | Allocated departments | Own department |
 | Action Taken Report | All fields, all departments | Auditor sign-off & feedback only | Root cause, action plan, target / completed date, evidence, status, HOD remarks |
 | KRGI Dashboard, Result Comparison | ✓ | – | – |
-| Auditor Allocation & Admin, Audit Questions, Django Admin | ✓ | – | – |
+| Auditor Allocation & Admin, Audit Questions, Django Admin (when enabled) | ✓ | – | – |
 | Other users' login credentials | ✓ | – | – |
 
 Role checks live in `backend/audit_core/permissions.py`. Anonymous API calls get `401`; calls outside the user's role or departments get `403`.
 
 ### 1. Administrator / IQAC Director
-- **Username**: `admin`
-- **Password**: `admin123`
+- **Username**: `admin` (the password is never written in this repository)
 - **Permissions**: Full control over department additions, auditor pool registry, individual auditor criteria allocations, and global threshold settings.
-- Sign in on the login page, or at `/admin/` for Django Admin.
-- **Change this password before real use.**
+- Sign in on the login page. Django Admin is available only when enabled (see *Deploying*).
 
 ### 2. Head of Department (HOD) Logins
-Separate user accounts and passwords are automatically generated for every department across all 3 institutes (**36 departments**).
-- **Login**: department email `hod.<dept>@<college>.ac.in` (e.g. `hod.cs@krct.ac.in`, `hod.ce@mkce.ac.in`) or username `hod.<institute_code>.<dept_code>`
-- **Passwords**: random temporary passwords, issued separately in `login.md` (git-ignored, not committed)
+Separate user accounts are generated for every department across all 3 institutes (**36 departments**).
+- **Login**: department email `hod.<dept>@<college>.ac.in` (e.g. `hod.cs@krct.ac.in`) or username `hod.<institute_code>.<dept_code>`
 
 *When an HOD logs in, the portal locks to their department. They read the auditor's report (scores and remarks, view-only) and, for every indicator scored below 60%, enter the Root Cause Analysis and Action Plan in the ATR tab. They can also download their department report.*
 
 ### 3. Academic Auditor Logins
-Separate user accounts and passwords are automatically generated for all **44 pooled auditors** from the Excel sheet.
-- **Username Format**: `auditor.<name_slug>`
-- **Password Format**: `Audit@<Name>#` (predictable; reset these before real use)
+Separate user accounts are generated for every pooled auditor.
+- **Username format**: `auditor.<name_slug>`
 - An auditor only sees the departments, criteria and audit cycle the Admin allocated to them.
-- **Examples**:
-  | Auditor Name | Institute & Dept | Auto Username | Auto Password |
-  |--------------|------------------|---------------|---------------|
-  | Dr. A. Oorkalan | KRCT - CIVIL | `auditor.oorkalan` | `Audit@Oorkalan#` |
-  | Dr. S. Dinesh | KRCT - MECH | `auditor.dinesh` | `Audit@Dinesh#` |
-  | Dr. Syed Akbar | KRCT - ECE | `auditor.syedakbar` | `Audit@Syedakbar#` |
-  | Mr. R. Rajavarman | KRCT - CSE | `auditor.rajavarman` | `Audit@Rajavarman#` |
-  | Dr. A. T. Sankara Subramaiyan | KRCT - EEE | `auditor.sankarasubramaiyan` | `Audit@Sankarasubramaiyan#` |
 
-*All auditor credentials can be reviewed and copied by the Admin in the **Auditor Pool & Auto-Logins** tab in the web app or in Django Admin at `/admin/audit_core/auditor/`.*
+### Passwords
+- Every new HOD / auditor login gets a **random 14-character password**. The Admin sees it once in **Auditor Pool & Auto-Logins** to hand it over.
+- At first login the user **must choose their own password** (at least 10 characters, not common, not only numbers). Until then nothing else can be used, and the initial password is deleted from the database once changed. Anyone can change their password later with the **Password** button next to *Log out*.
+- To issue new passwords to everyone (required once before going live): `python manage.py rotate_passwords --yes`. It writes the list to `login.md` (git-ignored, confidential; share each line only with that person) and also requires the Admin to change their password at the next login.
+- After 5 failed logins for a username (or 25 from one network address) within 15 minutes, logins are refused for 15 minutes.
 
 ---
 
@@ -351,6 +344,18 @@ python manage.py createcachetable
 $env:AUDIT_DB_ENGINE = "sqlite"; python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.permission -e sessions -o data.json
 $env:AUDIT_DB_ENGINE = "postgresql"; python manage.py loaddata data.json
 ```
+
+---
+
+## 🌐 Deploying to a website
+
+Security settings come from environment variables; the defaults are already safe (debug off, Django Admin off, only `localhost` accepted). For the website, copy the settings in `backend/deploy.env.example` into the server's environment and fill in the domain name. The steps still to do before and after going live are in **[TODO.md](TODO.md)**.
+
+Check the configuration on the server with:
+```powershell
+python manage.py check --deploy
+```
+With `AUDIT_HTTPS=true` only two optional HSTS notes (subdomains, preload list) should remain.
 
 ---
 

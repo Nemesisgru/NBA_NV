@@ -130,7 +130,7 @@ function ResultView({ result, onOpenCriterion }) {
     body = (
       <>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-          <Kpi label="Overall score" value={t.percentage !== null ? `${t.percentage}%` : 'No scores'} sub={`${fmt(t.marks_obtained)} / ${fmt(t.max_marks)} marks`} color="var(--primary)" />
+          <Kpi label="Overall score" value={result.withheld?.includes('percentage') ? 'Hidden' : (t.percentage !== null ? `${t.percentage}%` : 'No scores')} sub={`${fmt(t.marks_obtained)} / ${fmt(t.max_marks)} marks`} color="var(--primary)" />
           <Kpi label="Grade / status" value={t.grade || '-'} sub={t.compliance} color={t.grade ? `var(--grade-${t.grade.toLowerCase()})` : undefined} />
           <Kpi label="Submissions completed" value={fmtRatio(t.submission_completed)} />
           <Kpi label="Evidence uploaded" value={fmtRatio(t.evidence_uploaded)} sub={t.evidence_files_manual_check ? `${t.evidence_files_manual_check} file(s) need manual verification` : 'questions with a file'} />

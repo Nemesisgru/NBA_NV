@@ -320,8 +320,8 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
                     <td style={{ fontWeight: 700, color: '#e2e8f0' }}>{item.criterion_code}</td>
                     <td style={{ fontWeight: 700, color: '#a5b4fc' }}>{item.metric_code}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className={`badge badge-${item.grade.toLowerCase()}`}>
-                        {item.grade}
+                      <span className={`badge badge-${(item.grade || 'd').toLowerCase()}`}>
+                        {item.grade ?? 'Hidden'}
                       </span>
                     </td>
                     <td>
@@ -395,13 +395,13 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
 
             <div style={{ background: '#0f172a', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
               <div style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '0.85rem' }}>
-                {editingAtr.criterion_code} ({editingAtr.metric_code}) — Grade: {editingAtr.grade}
+                {editingAtr.criterion_code} ({editingAtr.metric_code}) — Grade: {editingAtr.grade ?? 'Hidden'}
               </div>
               <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '4px' }}>
                 {editingAtr.key_aspect}
               </div>
               <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '6px' }}>
-                Auditor remarks: {editingAtr.auditor_remarks || '-'} ({editingAtr.percentage}%)
+                Auditor remarks: {editingAtr.auditor_remarks === null ? 'Hidden' : (editingAtr.auditor_remarks || '-')}{editingAtr.percentage !== null && editingAtr.percentage !== undefined ? ` (${editingAtr.percentage}%)` : ''}
               </div>
             </div>
 

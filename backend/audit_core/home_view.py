@@ -11,7 +11,6 @@ def frontend_home(request):
     <h1>KRGI Academic Audit API & Backend</h1>
     <p>Django backend is running successfully.</p>
     <ul>
-        <li><a href='/admin/'>Django Admin Control Center</a></li>
         <li><a href='/api/bootstrap/'>API Bootstrap Endpoint</a></li>
         <li><a href='http://localhost:3000/'>React Frontend Dev Server (port 3000)</a></li>
     </ul>

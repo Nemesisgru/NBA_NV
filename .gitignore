@@ -9,3 +9,10 @@ backend/evidence_files/
 
 # Local database backups (contain logins and audit data)
 backend/backups/
+
+# Never commit: database (logins, password hashes, audit data), secret key, environment files
+backend/db.sqlite3
+backend/db.sqlite3-*
+backend/.secret_key
+*.env
+!*.env.example

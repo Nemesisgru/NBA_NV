@@ -69,6 +69,11 @@ def role_required(*roles):
                 return JsonResponse({'error': 'Login required'}, status=401)
             if roles and role not in roles:
                 return JsonResponse({'error': 'You do not have access to this action'}, status=403)
+            # A new or reset password must be changed before anything else can be used
+            from .auth_utils import must_change_password
+            if must_change_password(request.user):
+                return JsonResponse({'error': 'Please change your password first.', 'password_change_required': True},
+                                    status=403)
             request.role = role
             return view(request, *args, **kwargs)
         return wrapper

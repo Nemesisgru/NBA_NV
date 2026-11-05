@@ -17,16 +17,70 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+def _env_bool(name, default):
+    return os.environ.get(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ti#&&)t+t3fccdetjayl7jv(m$6^3ki3&bv%*f=+v7-78&n$!)'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def _env_list(name, default=''):
+    return [v.strip() for v in os.environ.get(name, default).split(',') if v.strip()]
 
-ALLOWED_HOSTS = ['*']
+
+# Security settings come from the environment; the defaults are safe for a public deployment.
+# See deploy.env.example and README "Deploying".
+
+def _secret_key():
+    """AUDIT_SECRET_KEY, else a random key kept in backend/.secret_key (created once, git-ignored)"""
+    key = os.environ.get('AUDIT_SECRET_KEY', '').strip()
+    if key:
+        return key
+    key_file = BASE_DIR / '.secret_key'
+    if key_file.exists():
+        return key_file.read_text(encoding='utf-8').strip()
+    import secrets
+    key = secrets.token_urlsafe(64)
+    key_file.write_text(key, encoding='utf-8')
+    return key
+
+
+SECRET_KEY = _secret_key()
+
+# Never on in production: debug pages show code and settings. Local development: AUDIT_DEBUG=true
+DEBUG = _env_bool('AUDIT_DEBUG', False)
+
+# The site's domain name(s), e.g. AUDIT_ALLOWED_HOSTS=audit.krgi.ac.in
+ALLOWED_HOSTS = _env_list('AUDIT_ALLOWED_HOSTS', 'localhost,127.0.0.1')
+
+# HTTPS (set AUDIT_HTTPS=true once the site has a certificate): redirect, secure cookies, HSTS
+AUDIT_HTTPS = _env_bool('AUDIT_HTTPS', False)
+SECURE_SSL_REDIRECT = AUDIT_HTTPS
+SESSION_COOKIE_SECURE = AUDIT_HTTPS
+CSRF_COOKIE_SECURE = AUDIT_HTTPS
+# Start small; raise to 31536000 (1 year) once HTTPS is confirmed working everywhere
+SECURE_HSTS_SECONDS = int(os.environ.get('AUDIT_HSTS_SECONDS', '3600')) if AUDIT_HTTPS else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('AUDIT_HSTS_SUBDOMAINS', False)
+if _env_bool('AUDIT_BEHIND_PROXY', False):
+    # nginx / a load balancer terminates HTTPS and sets X-Forwarded-Proto
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+# Logins expire after AUDIT_SESSION_HOURS (default 8) and when the browser is closed
+SESSION_COOKIE_AGE = int(float(os.environ.get('AUDIT_SESSION_HOURS', '8')) * 3600)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Django Admin: off unless AUDIT_ADMIN_ENABLED=true; served at AUDIT_ADMIN_PATH and, if
+# AUDIT_ADMIN_ALLOWED_IPS is set, only to those addresses (everyone else gets 404)
+AUDIT_ADMIN_ENABLED = _env_bool('AUDIT_ADMIN_ENABLED', False)
+AUDIT_ADMIN_PATH = os.environ.get('AUDIT_ADMIN_PATH', 'admin/').strip('/') + '/'
+AUDIT_ADMIN_ALLOWED_IPS = _env_list('AUDIT_ADMIN_ALLOWED_IPS')
+
+# Failed logins: after AUDIT_LOGIN_MAX_FAILURES failures for one username or one address within
+# AUDIT_LOGIN_LOCKOUT_MINUTES, further attempts are refused for that period (login page and Django Admin)
+AUDIT_LOGIN_MAX_FAILURES = int(os.environ.get('AUDIT_LOGIN_MAX_FAILURES', '5'))
+AUDIT_LOGIN_LOCKOUT_MINUTES = int(os.environ.get('AUDIT_LOGIN_LOCKOUT_MINUTES', '15'))
+AUTHENTICATION_BACKENDS = ['audit_core.login_guard.LockoutModelBackend']
 
 # CSRF protection is on for every API call; the React app sends the token from the csrftoken cookie.
 # The Vite dev server (port 3000) proxies to Django, so its origin must be trusted.
@@ -48,14 +102,15 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'audit_core.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'audit_core.middleware.AdminAccessMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'audit_core.middleware.ApiErrorMiddleware',
 ]
 
 ROOT_URLCONF = 'audit_backend.urls'
@@ -123,6 +178,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 10},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -152,10 +208,6 @@ STATIC_URL = 'static/'
 
 # Existing tables were created with BigAutoField ids; stating it keeps new migrations from altering them
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-def _env_bool(name, default):
-    return os.environ.get(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
 
 
 # Local AI Audit Analytics Assistant (see README "AI Audit Assistant").

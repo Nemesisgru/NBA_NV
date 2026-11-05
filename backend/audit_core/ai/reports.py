@@ -18,6 +18,8 @@ from django.utils import timezone
 from ..models import AIReport
 from ..permissions import user_role
 from . import analytics, narration, ollama
+from ..models import AuditCycle
+from ..question_scope import hidden_output_keys, redact
 from .scope import ScopeError, resolve_scope
 
 log = logging.getLogger('audit_core.ai')
@@ -67,6 +69,13 @@ def run_report(report_id):
             raise ScopeError('The report owner no longer has access')
         scope = resolve_scope(req, department_id=report.department_id, cycle_id=report.cycle_id)
         snapshot = analytics.build_report_snapshot(scope, report.compare_cycle, report.filters.get('criterion'))
+        # Columns the Admin hid for the audit are withheld from HOD / Auditor reports as well
+        compared = (snapshot.get('comparison') or {}).get('compare_cycle') or {}
+        other = report.compare_cycle or (AuditCycle.objects.filter(id=compared.get('id')).first() if compared.get('id') else None)
+        keys = hidden_output_keys([scope.cycle, other], scope.role)
+        if keys:
+            snapshot = redact(snapshot, keys)
+            snapshot.setdefault('notes', []).append('Some figures are not shown because the Admin hid those columns for this audit.')
         story = None
         if report.include_narration:
             try:

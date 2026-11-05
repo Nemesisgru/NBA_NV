@@ -7,6 +7,7 @@ import useSlidingIndicator from '../hooks/useSlidingIndicator';
 import ColumnPicker from './ColumnPicker';
 import EvidencePanel from './EvidencePanel';
 import { normalizeColumns, sameColumns } from '../auditColumns';
+import { gradeFor } from '../grading';
 
 // Round to at most two decimal places for display (trailing zeros dropped)
 const fmt2 = (v) => {
@@ -34,6 +35,7 @@ export default function CriterionEvaluation({
   userRole,
   editableCriteria,
   visibleColumns,
+  gradingSettings,
   onNavigateToATR
 }) {
   const [criterionData, setCriterionData] = useState(null);
@@ -141,10 +143,7 @@ export default function CriterionEvaluation({
         marksObt = Math.round(maxMarks * ratio * 100) / 100;
         pct = maxMarks > 0 ? Math.round((marksObt / maxMarks) * 10000) / 100 : 100;
 
-        if (pct > 75) grade = 'Y';
-        else if (pct >= 60) grade = 'C';
-        else if (pct >= 40) grade = 'W';
-        else grade = 'D';
+        grade = gradeFor(pct, gradingSettings);
 
         if (grade === 'W' || grade === 'D') {
           evalData.is_flagged_for_atr = true;
@@ -191,8 +190,8 @@ export default function CriterionEvaluation({
         items_checked: ev.items_checked,
         valid_items: ev.valid_items,
         auditor_remarks: ev.auditor_remarks,
-        evidence_status: ev.evidence_status || 'Complete',
-        physical_check_result: ev.physical_check_result || 'Matches claim',
+        evidence_status: ev.evidence_status || 'Not Uploaded',
+        physical_check_result: ev.physical_check_result || 'Not checked',
         is_flagged_for_atr: ev.is_flagged_for_atr || false
       };
       inFlightRef.current.add(metricId);
@@ -268,14 +267,11 @@ export default function CriterionEvaluation({
     const pct = max > 0 ? Math.round((obt / max) * 10000) / 100 : 0;
     let grade = '-';
     if (evaluableMetrics.length - unscored > 0) {
-      if (pct > 75) grade = 'Y';
-      else if (pct >= 60) grade = 'C';
-      else if (pct >= 40) grade = 'W';
-      else grade = 'D';
+      grade = gradeFor(pct, gradingSettings);
     }
 
     return { max: Math.round(max * 100) / 100, obt: Math.round(obt * 100) / 100, pct, grade, y, c, w, d, unscored };
-  }, [evaluableMetrics]);
+  }, [evaluableMetrics, gradingSettings]);
 
   // Filter metrics
   const filteredMetrics = useMemo(() => {
@@ -735,7 +731,7 @@ export default function CriterionEvaluation({
                     {col.evidenceStatus && (
                         <td>
                           <select
-                            value={ev.evidence_status || 'Complete'}
+                            value={ev.evidence_status || 'Not Uploaded'}
                             onChange={(e) => handleInputChange(item.id, 'evidence_status', e.target.value)}
                             disabled={readOnly}
                             style={{ fontSize: '0.75rem', padding: '3px 6px' }}
@@ -749,7 +745,7 @@ export default function CriterionEvaluation({
                     {col.physicalCheck && (
                         <td>
                           <select
-                            value={ev.physical_check_result || 'Matches claim'}
+                            value={ev.physical_check_result || 'Not checked'}
                             onChange={(e) => handleInputChange(item.id, 'physical_check_result', e.target.value)}
                             disabled={readOnly}
                             style={{ fontSize: '0.75rem', padding: '3px 6px' }}

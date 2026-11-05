@@ -1,4 +1,6 @@
 import json
+from html import escape as html_escape
+from django.conf import settings
 import csv
 import io
 from django.http import JsonResponse, HttpResponse
@@ -11,8 +13,14 @@ from .models import (
     Institute, Department, Auditor, AuditCycle, Criterion,
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
 )
-from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user
+from .auth_utils import create_or_update_auditor_user, create_or_update_hod_user, must_change_password, set_must_change
+from .login_guard import is_locked
+from .middleware import json_body
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from .evidence import can_upload as can_upload_evidence, file_json as evidence_json, files_for as evidence_files_for
+from .question_scope import hidden_output_keys, redact
 from .question_scope import (
     selected_metric_ids, cycle_metrics, is_metric_in_cycle, criteria_totals, visible_columns, normalize_columns,
     hidden_fields,
@@ -45,9 +53,9 @@ def auth_login_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
-    username = data.get('username', '').strip()
-    password = data.get('password', '').strip()
+    data = json_body(request)
+    username = str(data.get('username') or '').strip()[:150]
+    password = str(data.get('password') or '')
 
     if not username or not password:
         return JsonResponse({'error': 'Username and password required'}, status=400)
@@ -58,7 +66,10 @@ def auth_login_view(request):
         if by_email:
             username = by_email.username
 
-    user = authenticate(username=username, password=password)
+    if is_locked(username, request):
+        return JsonResponse({'error': f'Too many failed logins. Try again in {settings.AUDIT_LOGIN_LOCKOUT_MINUTES} minutes.'},
+                            status=429)
+    user = authenticate(request, username=username, password=password)
     if not user:
         return JsonResponse({'error': 'Invalid username or password'}, status=401)
     if user_role(user) is None:
@@ -79,6 +90,34 @@ def auth_logout_view(request):
         return JsonResponse({'error': 'POST required'}, status=405)
     logout(request)
     return JsonResponse({'status': 'success'})
+
+
+def auth_change_password_view(request):
+    """Any logged-in user changes their own password (required after a new or reset password)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    if user_role(request.user) is None:
+        return JsonResponse({'error': 'Login required'}, status=401)
+    data = json_body(request)
+    current = str(data.get('current_password') or '')
+    new = str(data.get('new_password') or '')
+    user = request.user
+    if not user.check_password(current):
+        return JsonResponse({'error': 'The current password is not correct.'}, status=400)
+    if new == current:
+        return JsonResponse({'error': 'Choose a password different from the current one.'}, status=400)
+    try:
+        validate_password(new, user)
+    except ValidationError as e:
+        return JsonResponse({'error': ' '.join(e.messages)}, status=400)
+    user.set_password(new)
+    user.save()
+    update_session_auth_hash(request, user)  # stay logged in on this device, other sessions end
+    set_must_change(user, False)
+    # The initial password is no longer valid, so stop keeping it
+    Auditor.objects.filter(user=user).update(initial_password='')
+    Department.objects.filter(hod_user=user).update(hod_initial_password='')
+    return JsonResponse({'status': 'success', 'user': user_payload(user)})
 
 def user_payload(user):
     """Profile, role and assigned scope returned to the frontend after login"""
@@ -125,7 +164,8 @@ def user_payload(user):
         'email': user.email,
         'role': role,
         'auditor_info': auditor_info,
-        'hod_info': hod_info
+        'hod_info': hod_info,
+        'must_change_password': must_change_password(user)
     }
 
 @role_required()
@@ -309,7 +349,7 @@ def save_evaluation(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     dept_id = data.get('department_id')
     cycle_id = data.get('cycle_id')
     metric_id = data.get('metric_id')
@@ -347,8 +387,8 @@ def save_evaluation(request):
     items_checked = data.get('items_checked')
     valid_items = data.get('valid_items')
     auditor_remarks = data.get('auditor_remarks', '')
-    evidence_status = data.get('evidence_status', 'Complete')
-    physical_check_result = data.get('physical_check_result', 'Matches claim')
+    evidence_status = data.get('evidence_status') or 'Not Uploaded'
+    physical_check_result = data.get('physical_check_result') or 'Not checked'
     is_flagged = data.get('is_flagged_for_atr', False)
 
     try:
@@ -511,7 +551,9 @@ def criterion_summary(request):
     overall_pct = round((total_obtained_marks / total_max_marks) * 100, 2) if total_max_marks > 0 else 0
     overall_grade = calculate_grade(overall_pct, settings)
 
+    hidden = hidden_output_keys(cycle, request.role)
     return JsonResponse({
+        'hidden_keys': sorted(hidden),
         'department': {
             'id': dept.id,
             'code': dept.code,
@@ -524,8 +566,8 @@ def criterion_summary(request):
             'cycle_type': cycle.cycle_type,
             'semester': cycle.semester
         },
-        'rows': summary_rows,
-        'totals': {
+        'rows': redact(summary_rows, hidden),
+        'totals': redact({
             'max_marks': round(total_max_marks, 1),
             'validated_marks': round(total_obtained_marks, 2),
             'percentage': overall_pct,
@@ -535,7 +577,7 @@ def criterion_summary(request):
             'count_w': total_w,
             'count_d': total_d,
             'unscored': total_unscored
-        }
+        }, hidden)
     })
 
 @role_required('Admin')
@@ -707,10 +749,16 @@ def atr_list(request):
         query = query.filter(evaluation__metric__criterion__code=criterion)
 
     atrs = []
+    hidden_by_cycle = {}  # columns the Admin hid per audit are withheld from HODs / Auditors
     for item in query.order_by('evaluation__department__institute__code', 'evaluation__department__code',
                                'evaluation__metric__criterion__order', 'evaluation__metric__order'):
         ev = item.evaluation
-        atrs.append({
+        if ev.cycle_id not in hidden_by_cycle:
+            hidden_by_cycle[ev.cycle_id] = hidden_output_keys(ev.cycle, request.role)
+        hidden = hidden_by_cycle[ev.cycle_id]
+        if grade and 'grade' in hidden:
+            continue  # filtering by a hidden grade would reveal it
+        atrs.append(redact({
             'atr_id': item.id,
             'evaluation_id': ev.id,
             'department_id': ev.department_id,
@@ -734,7 +782,7 @@ def atr_list(request):
             'owner_name': item.owner_name,
             'auditor_signoff': item.auditor_signoff,
             'auditor_feedback': item.auditor_feedback,
-        })
+        }, hidden))
 
     return JsonResponse({'atrs': atrs})
 
@@ -744,7 +792,7 @@ def update_atr(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     atr_id = data.get('atr_id')
     eval_id = data.get('evaluation_id')
 
@@ -828,7 +876,7 @@ def save_cycle_questions(request):
     ({visible_columns}) of a cycle's audit for all auditors"""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     cycle = AuditCycle.objects.filter(id=data.get('cycle_id')).first()
     if not cycle:
         return JsonResponse({'error': 'Audit cycle not found'}, status=404)
@@ -956,7 +1004,7 @@ def save_assignment(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     dept_id = data.get('department_id')
     cycle_id = data.get('cycle_id')
     a1_id = data.get('auditor_1_id')
@@ -1035,7 +1083,7 @@ def reset_assignment(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
     try:
-        data = json.loads(request.body.decode('utf-8') or '{}')
+        data = json_body(request)
         dept_id, cycle_id = int(data.get('department_id')), int(data.get('cycle_id'))
     except (TypeError, ValueError):
         return JsonResponse({'error': 'department_id and cycle_id required'}, status=400)
@@ -1054,7 +1102,7 @@ def add_department(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     inst_code = data.get('institute_code')
     code = data.get('code', '').strip().upper()
     name = data.get('name', '').strip()
@@ -1101,7 +1149,7 @@ def add_auditor(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
-    data = json.loads(request.body.decode('utf-8'))
+    data = json_body(request)
     name = data.get('name', '').strip()
     email = data.get('email', '').strip()
     inst_code = data.get('institute_code', '')
@@ -1142,6 +1190,43 @@ def add_auditor(request):
         }
     })
 
+FORMULA_START = ('=', '+', '-', '@', '\t', '\r')
+
+
+def csv_safe(value):
+    """Text a spreadsheet could run as a formula (=, +, -, @ ...) is prefixed with ' so it stays text"""
+    if isinstance(value, str) and len(value) > 1 and value.startswith(FORMULA_START):
+        return "'" + value
+    return value
+
+
+class SafeCsvWriter:
+    """csv.writer that escapes formula-like text and blanks columns hidden from this login.
+    Call header() for a table's column titles; following rows are masked by those titles."""
+    HEADER_KEYS = {
+        'Max Marks': 'max_marks', 'Validated Marks': 'validated_marks', 'Percentage (%)': 'percentage',
+        'Percentage': 'percentage', 'Score %': 'percentage', 'Grade': 'grade',
+        'Y (>75%)': 'count_y', 'C (60-75%)': 'count_c', 'W (40-60%)': 'count_w', 'D (<40%)': 'count_d',
+        'Items Checked': 'items_checked', 'Valid Items': 'valid_items', 'Benchmark': 'benchmark',
+        'Validated Value': 'validated_value', 'Marks Obtained': 'marks_obtained',
+        'Auditor Remarks': 'auditor_remarks', 'Evidence Status': 'evidence_status', 'Physical Check': 'physical_check',
+    }
+
+    def __init__(self, response, hidden_keys=()):
+        self._w = csv.writer(response)
+        self.hidden = set(hidden_keys)
+        self.mask = []
+
+    def header(self, titles):
+        self.mask = [self.HEADER_KEYS.get(t) in self.hidden for t in titles]
+        self._w.writerow([csv_safe(t) for t in titles])
+
+    def writerow(self, row):
+        if not row:
+            self.mask = []
+        self._w.writerow([('Hidden' if i < len(self.mask) and self.mask[i] else csv_safe(v)) for i, v in enumerate(row)])
+
+
 @role_required('Admin')
 def download_auditor_template(request):
     """Download CSV template for bulk auditor upload"""
@@ -1167,7 +1252,7 @@ def bulk_upload_auditors(request):
         csv_text = csv_file.read().decode('utf-8', errors='ignore')
     elif request.body:
         try:
-            body_json = json.loads(request.body.decode('utf-8'))
+            body_json = json_body(request)
             csv_text = body_json.get('csv_text', '')
         except:
             csv_text = request.body.decode('utf-8', errors='ignore')
@@ -1231,7 +1316,8 @@ def bulk_upload_auditors(request):
             'department': dept,
             'email': auditor.email,
             'username': username,
-            'initial_password': password
+            # Existing logins keep their password (shown only while it has not been changed)
+            'initial_password': password or auditor.initial_password or '(unchanged - use Reset password)'
         })
 
     return JsonResponse({
@@ -1262,7 +1348,9 @@ def export_department_excel(request):
     filename = f"{dept.institute.code}_{dept.code}_Academic_Audit_Report.csv"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
-    writer = csv.writer(response)
+    # Columns the Admin hid for this audit are blanked for HODs / Auditors
+    hidden = hidden_output_keys(cycle, request.role) | ({'benchmark'} if 'benchmark' in hidden_fields(cycle, request.role)[0] else set())
+    writer = SafeCsvWriter(response, hidden)
 
     # 1. Header Information
     writer.writerow(['KRGI ACADEMIC AUDIT REPORT (NBA TIER-I ALIGNED)'])
@@ -1275,7 +1363,7 @@ def export_department_excel(request):
 
     # 2. Section: Criterion Summary Table
     writer.writerow(['=== SECTION 1: CRITERION-WISE SUMMARY (1000 MARKS) ==='])
-    writer.writerow(['Criterion Code', 'Criterion Title', 'Max Marks', 'Validated Marks', 'Percentage (%)', 'Grade', 'Y (>75%)', 'C (60-75%)', 'W (40-60%)', 'D (<40%)'])
+    writer.header(['Criterion Code', 'Criterion Title', 'Max Marks', 'Validated Marks', 'Percentage (%)', 'Grade', 'Y (>75%)', 'C (60-75%)', 'W (40-60%)', 'D (<40%)'])
     
     criteria = Criterion.objects.order_by('order').all()
     tot_max = 0
@@ -1307,7 +1395,7 @@ def export_department_excel(request):
 
     # 3. Section: Detailed Metric Evaluations
     writer.writerow(['=== SECTION 2: DETAILED METRIC EVALUATIONS ==='])
-    writer.writerow(['Criterion', 'Metric Code', 'Key Aspect', 'Max Marks', 'Items Checked', 'Valid Items', 'Benchmark', 'Validated Value', 'Marks Obtained', 'Percentage', 'Grade', 'Auditor Remarks', 'Evidence Status', 'Physical Check'])
+    writer.header(['Criterion', 'Metric Code', 'Key Aspect', 'Max Marks', 'Items Checked', 'Valid Items', 'Benchmark', 'Validated Value', 'Marks Obtained', 'Percentage', 'Grade', 'Auditor Remarks', 'Evidence Status', 'Physical Check'])
     
     evals_all = AuditEvaluation.objects.filter(department=dept, cycle=cycle, metric__in=cycle_metrics(cycle.id)).select_related('metric__criterion').order_by('metric__criterion__order', 'metric__order')
     for ev in evals_all:
@@ -1332,7 +1420,7 @@ def export_department_excel(request):
 
     # 4. Section: Action Taken Report (ATR)
     writer.writerow(['=== SECTION 3: ACTION TAKEN REPORT (ATR) - INDICATORS SCORED BELOW 60% ==='])
-    writer.writerow(['Metric Code', 'Aspect', 'Score %', 'Grade', 'Root Cause Analysis', 'Corrective Action Plan', 'Target Date', 'Status', 'HOD Remarks', 'Auditor Sign-off'])
+    writer.header(['Metric Code', 'Aspect', 'Score %', 'Grade', 'Root Cause Analysis', 'Corrective Action Plan', 'Target Date', 'Status', 'HOD Remarks', 'Auditor Sign-off'])
     
     atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle,
                                             evaluation__metric__in=cycle_metrics(cycle.id)).select_related('evaluation__metric')
@@ -1391,11 +1479,24 @@ def export_department_pdf(request):
     atrs = ActionTakenReport.objects.filter(evaluation__department=dept, evaluation__cycle=cycle,
                                             evaluation__metric__in=cycle_metrics(cycle.id)).select_related('evaluation__metric__criterion')
 
+    # Everything inserted into the page is HTML-escaped (users type remarks, root causes and plans);
+    # columns the Admin hid for this audit are shown as "Hidden" to HODs / Auditors
+    hidden = hidden_output_keys(cycle, request.role)
+    e = lambda v: html_escape('' if v is None else str(v))  # noqa: E731
+
+    def show(key, value, suffix=''):
+        return 'Hidden' if key in hidden else e(f"{value}{suffix}")
+
+    def badge(grade, extra=''):
+        if 'grade' in hidden:
+            return 'Hidden'
+        return f'<span class="badge badge-{e((grade or "d").lower())}">{e(grade)}</span>{extra}'
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>{dept.institute.code} - {dept.code} Academic Audit Official Report</title>
+    <title>{e(dept.institute.code)} - {e(dept.code)} Academic Audit Official Report</title>
     <style>
         body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #1e293b; line-height: 1.4; }}
         .header {{ text-align: center; border-bottom: 2px solid #4f46e5; padding-bottom: 16px; margin-bottom: 24px; }}
@@ -1434,22 +1535,22 @@ def export_department_pdf(request):
     <div class="header">
         <h1>K. RAMAKRISHNAN GROUP OF INSTITUTIONS</h1>
         <h2>INTERNAL QUALITY ASSURANCE CELL (IQAC) - ACADEMIC AUDIT REPORT</h2>
-        <p>NBA Tier-I Aligned Evaluation Framework (Criteria 1 - 9) • Academic Year: {cycle.academic_year} {cycle.semester}</p>
+        <p>NBA Tier-I Aligned Evaluation Framework (Criteria 1 - 9) • Academic Year: {e(cycle.academic_year)} {e(cycle.semester)}</p>
     </div>
 
     <div class="meta-box">
-        <div class="meta-item"><strong>Institute:</strong> {dept.institute.code} - {dept.institute.name}</div>
-        <div class="meta-item"><strong>Department:</strong> {dept.code} ({dept.name})</div>
-        <div class="meta-item"><strong>Head of Dept:</strong> {dept.hod_name or 'Dr. HoD'}</div>
-        <div class="meta-item"><strong>Audit Cycle:</strong> {cycle.cycle_type}</div>
+        <div class="meta-item"><strong>Institute:</strong> {e(dept.institute.code)} - {e(dept.institute.name)}</div>
+        <div class="meta-item"><strong>Department:</strong> {e(dept.code)} ({e(dept.name)})</div>
+        <div class="meta-item"><strong>Head of Dept:</strong> {e(dept.hod_name or 'Dr. HoD')}</div>
+        <div class="meta-item"><strong>Audit Cycle:</strong> {e(cycle.cycle_type)}</div>
     </div>
 
     <div class="kpi-row">
-        <div class="kpi-card"><div>MAX MARKS</div><div class="val">{tot_max}</div></div>
-        <div class="kpi-card"><div>VALIDATED MARKS</div><div class="val">{tot_obt}</div></div>
-        <div class="kpi-card"><div>PERCENTAGE</div><div class="val" style="color: #10b981;">{tot_pct}%</div></div>
-        <div class="kpi-card"><div>OVERALL GRADE</div><div class="val" style="color: #4f46e5;">{tot_grd}</div></div>
-        <div class="kpi-card"><div>Y / C / W / D INDICATORS</div><div class="val" style="font-size: 16px;">{tot_y} / {tot_c} / {tot_w} / {tot_d}</div></div>
+        <div class="kpi-card"><div>MAX MARKS</div><div class="val">{show('max_marks', tot_max)}</div></div>
+        <div class="kpi-card"><div>VALIDATED MARKS</div><div class="val">{show('validated_marks', tot_obt)}</div></div>
+        <div class="kpi-card"><div>PERCENTAGE</div><div class="val" style="color: #10b981;">{show('percentage', tot_pct, '%')}</div></div>
+        <div class="kpi-card"><div>OVERALL GRADE</div><div class="val" style="color: #4f46e5;">{show('grade', tot_grd)}</div></div>
+        <div class="kpi-card"><div>Y / C / W / D INDICATORS</div><div class="val" style="font-size: 16px;">{show('count_y', tot_y)} / {show('count_c', tot_c)} / {show('count_w', tot_w)} / {show('count_d', tot_d)}</div></div>
     </div>
 
     <h3 style="color: #1e293b; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px;">1. Criterion-Wise Executive Summary (1000 Marks)</h3>
@@ -1472,28 +1573,28 @@ def export_department_pdf(request):
     for r in summary_rows:
         html += f"""
             <tr>
-                <td><strong>{r['code']}</strong></td>
-                <td>{r['title']}</td>
-                <td style="text-align: right;">{r['max']}</td>
-                <td style="text-align: right; font-weight: bold;">{r['obt']}</td>
-                <td style="text-align: right;">{r['pct']}%</td>
-                <td style="text-align: center;"><span class="badge badge-{(r['grade'] or 'd').lower()}">{r['grade']}</span></td>
-                <td style="text-align: center;">{r['y']}</td>
-                <td style="text-align: center;">{r['c']}</td>
-                <td style="text-align: center;">{r['w']}</td>
-                <td style="text-align: center;">{r['d']}</td>
+                <td><strong>{e(r['code'])}</strong></td>
+                <td>{e(r['title'])}</td>
+                <td style="text-align: right;">{show('max_marks', r['max'])}</td>
+                <td style="text-align: right; font-weight: bold;">{show('validated_marks', r['obt'])}</td>
+                <td style="text-align: right;">{show('percentage', r['pct'], '%')}</td>
+                <td style="text-align: center;">{badge(r['grade'])}</td>
+                <td style="text-align: center;">{show('count_y', r['y'])}</td>
+                <td style="text-align: center;">{show('count_c', r['c'])}</td>
+                <td style="text-align: center;">{show('count_w', r['w'])}</td>
+                <td style="text-align: center;">{show('count_d', r['d'])}</td>
             </tr>"""
     html += f"""
             <tr style="background: #f8fafc; font-weight: bold;">
                 <td colspan="2">TOTAL SCORE</td>
-                <td style="text-align: right;">{tot_max}</td>
-                <td style="text-align: right;">{tot_obt}</td>
-                <td style="text-align: right;">{tot_pct}%</td>
-                <td style="text-align: center;"><span class="badge badge-{(tot_grd or 'd').lower()}">{tot_grd}</span></td>
-                <td style="text-align: center;">{tot_y}</td>
-                <td style="text-align: center;">{tot_c}</td>
-                <td style="text-align: center;">{tot_w}</td>
-                <td style="text-align: center;">{tot_d}</td>
+                <td style="text-align: right;">{show('max_marks', tot_max)}</td>
+                <td style="text-align: right;">{show('validated_marks', tot_obt)}</td>
+                <td style="text-align: right;">{show('percentage', tot_pct, '%')}</td>
+                <td style="text-align: center;">{badge(tot_grd)}</td>
+                <td style="text-align: center;">{show('count_y', tot_y)}</td>
+                <td style="text-align: center;">{show('count_c', tot_c)}</td>
+                <td style="text-align: center;">{show('count_w', tot_w)}</td>
+                <td style="text-align: center;">{show('count_d', tot_d)}</td>
             </tr>
         </tbody>
     </table>
@@ -1518,13 +1619,13 @@ def export_department_pdf(request):
             ev = a.evaluation
             html += f"""
             <tr>
-                <td><strong>{ev.metric.code}</strong></td>
-                <td>{ev.metric.key_aspect}</td>
-                <td style="text-align: center;"><span class="badge badge-{(ev.grade or 'd').lower()}">{ev.grade}</span> ({ev.percentage}%)</td>
-                <td>{a.root_cause or 'Pending HOD analysis'}</td>
-                <td>{a.action_plan or 'Pending corrective action'}</td>
-                <td>{a.target_date or '-'}</td>
-                <td style="text-align: center;">{a.status}</td>
+                <td><strong>{e(ev.metric.code)}</strong></td>
+                <td>{e(ev.metric.key_aspect)}</td>
+                <td style="text-align: center;">{badge(ev.grade, '' if 'percentage' in hidden else f' ({e(ev.percentage)}%)')}</td>
+                <td>{e(a.root_cause or 'Pending HOD analysis')}</td>
+                <td>{e(a.action_plan or 'Pending corrective action')}</td>
+                <td>{e(a.target_date or '-')}</td>
+                <td style="text-align: center;">{e(a.status)}</td>
                 <td style="text-align: center;">{'Verified' if a.auditor_signoff else 'Pending'}</td>
             </tr>"""
     else:
@@ -1536,7 +1637,7 @@ def export_department_pdf(request):
 
     <div class="signatures">
         <div class="sig-box">
-            Head of the Department<br>({dept.hod_name or 'Dr. HoD'})
+            Head of the Department<br>({e(dept.hod_name or 'Dr. HoD')})
         </div>
         <div class="sig-box">
             Lead Academic Auditor<br>(KRGI Auditor Pool)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { gradeFor } from '../grading';
 import { BarChart3, CheckSquare, Square, RefreshCw, GitCompare, Award, TrendingUp, Layers } from 'lucide-react';
 
 const MAX_COMPARE = 10;
@@ -18,7 +19,7 @@ const loadSavedSelection = (departments) => {
   }
 };
 
-export default function ComparisonPage({ departments, selectedCycleId, criteriaList }) {
+export default function ComparisonPage({ departments, selectedCycleId, criteriaList, gradingSettings }) {
   const [selectedDeptIds, setSelectedDeptIds] = useState(() => loadSavedSelection(departments));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -353,7 +354,7 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                   <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.title}</td>
                   {comparedDepts.map(d => {
                     const score = d.scores[cIdx] || 0;
-                    const grade = score > 75 ? 'Y' : (score >= 60 ? 'C' : (score >= 40 ? 'W' : 'D'));
+                    const grade = gradeFor(score, gradingSettings);
                     return (
                       <td key={d.department_id} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 700, marginRight: '6px' }}>{score}%</span>

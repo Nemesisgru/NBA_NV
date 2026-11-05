@@ -7,6 +7,7 @@ registered here can run.
 from datetime import date
 
 from ..models import AuditCycle, Criterion
+from ..question_scope import hidden_output_keys, redact
 from . import analytics
 
 
@@ -154,4 +155,20 @@ def run_operation(scope, operation, filters):
         raise OperationError('Reports are generated through the report endpoint')
     if scope.cycle is None:
         raise OperationError('Select an audit cycle first')
-    return fn(scope, cleaned)
+    return withhold_hidden(fn(scope, cleaned), scope)
+
+
+def withhold_hidden(result, scope):
+    """Figures of columns the Admin hid for the audit (or the compared audit) are withheld from HODs / Auditors"""
+    cycles = [scope.cycle]
+    other_id = (result.get('compare_cycle') or {}).get('id') if isinstance(result.get('compare_cycle'), dict) else None
+    if other_id:
+        cycles.append(AuditCycle.objects.filter(id=other_id).first())
+    keys = hidden_output_keys(cycles, scope.role)
+    if not keys:
+        return result
+    result = redact(result, keys)
+    result['withheld'] = sorted(keys)
+    result.setdefault('notes', []).append(
+        'Some figures are not shown for your login because the Admin hid those columns for this audit.')
+    return result

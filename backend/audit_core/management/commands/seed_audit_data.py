@@ -17,8 +17,9 @@ class Command(BaseCommand):
 
         # 1. Superuser
         if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser('admin', 'admin@krgi.edu', 'admin123')
-            self.stdout.write("Created superuser 'admin' with password 'admin123'")
+            # No default password: set one with "python manage.py changepassword admin"
+            User.objects.create_superuser('admin', 'admin@krgi.edu', None)
+            self.stdout.write("Created superuser 'admin'. Set its password with: python manage.py changepassword admin")
 
         # 2. Settings
         settings, _ = AuditSettings.objects.get_or_create(id=1, defaults={

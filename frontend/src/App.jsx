@@ -9,6 +9,7 @@ import ComparisonPage, { COMPARE_SELECTION_KEY } from './components/ComparisonPa
 import AuditQuestionSetup from './components/AuditQuestionSetup';
 import AIAssistant from './components/AIAssistant';
 import LoginPage from './components/LoginPage';
+import ChangePassword from './components/ChangePassword';
 import { Loader2 } from 'lucide-react';
 
 // Tabs each role may open; the backend enforces the same limits on the API
@@ -29,10 +30,19 @@ export default function App() {
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  // Logged in with a new / reset password that must be changed before the app opens
+  const [pendingUser, setPendingUser] = useState(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const userRole = currentUser?.role; // 'Auditor' | 'HOD' | 'Admin'
 
   // Load reference data (scoped to the user by the backend) and pick the user's starting context
   const startSession = async (user) => {
+    if (user?.must_change_password) {
+      setPendingUser(user);
+      setLoading(false);
+      return;
+    }
+    setPendingUser(null);
     setLoading(true);
     try {
       const res = await fetch('/api/bootstrap/');
@@ -74,6 +84,8 @@ export default function App() {
 
   const resetSession = () => {
     sessionStorage.removeItem(COMPARE_SELECTION_KEY);
+    setPendingUser(null);
+    setShowChangePassword(false);
     setCurrentUser(null);
     setBootstrap(null);
     setLoading(false);
@@ -89,6 +101,17 @@ export default function App() {
     window.addEventListener('auth:expired', resetSession);
     return () => window.removeEventListener('auth:expired', resetSession);
   }, []);
+
+  if (pendingUser) {
+    return (
+      <ChangePassword
+        forced
+        username={pendingUser.username}
+        onChanged={startSession}
+        onLogout={() => fetch('/api/auth/logout/', { method: 'POST' }).finally(resetSession)}
+      />
+    );
+  }
 
   if (!loading && !currentUser) {
     return <LoginPage onLogin={startSession} />;
@@ -207,7 +230,14 @@ export default function App() {
         userRole={userRole}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onChangePassword={() => setShowChangePassword(true)}
       />
+      {showChangePassword && (
+        <ChangePassword
+          onCancel={() => setShowChangePassword(false)}
+          onChanged={() => { setShowChangePassword(false); alert('Your password has been changed.'); }}
+        />
+      )}
 
       {/* Role / Logged in contextual alert bar (HOD and Auditor only) */}
       {(userRole === 'HOD' || userRole === 'Auditor') && (
@@ -251,6 +281,7 @@ export default function App() {
             userRole={userRole}
             editableCriteria={auditorCriteria}
             visibleColumns={currentCycle?.visible_columns}
+            gradingSettings={bootstrap.settings}
             onNavigateToATR={() => setActiveTab('atr')}
           />
         )}
@@ -326,6 +357,7 @@ export default function App() {
             departments={bootstrap.departments}
             selectedCycleId={selectedCycle}
             criteriaList={bootstrap.criteria}
+            gradingSettings={bootstrap.settings}
           />
         )}
       </main>

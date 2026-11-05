@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Building2, Calendar, Filter, ShieldCheck, UserCheck, ExternalLink, Download, FileText, LogOut
+  Building2, Calendar, Filter, ShieldCheck, Download, KeyRound, FileText, LogOut
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
@@ -20,7 +20,8 @@ export default function Navbar({
   allowedTabs,
   userRole,
   currentUser,
-  onLogout
+  onLogout,
+  onChangePassword
 }) {
   const filteredDepartments = departments.filter(
     d => !selectedInstitute || d.institute_code === selectedInstitute
@@ -120,19 +121,6 @@ export default function Navbar({
             <ThemeToggle id="navbar-theme-toggle" size="sm" showLabel={false} />
           </div>
 
-          {/* Django Admin Link */}
-          {userRole === 'Admin' && (
-            <a
-              href="/admin/"
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <UserCheck size={14} /> Django Admin <ExternalLink size={12} />
-            </a>
-          )}
-
           {/* User Account / Role Badge with Log out, kept last so it sits in the top right corner */}
           {currentUser && (
             <div style={{
@@ -148,6 +136,14 @@ export default function Navbar({
                 <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{currentUser.username}</span>
                 <span style={{ color: 'var(--text-secondary)' }}> ({currentUser.role})</span>
               </div>
+              <button
+                onClick={onChangePassword}
+                className="btn btn-outline btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                title="Change your password"
+              >
+                <KeyRound size={14} /> Password
+              </button>
               <button
                 onClick={onLogout}
                 className="btn btn-sm"

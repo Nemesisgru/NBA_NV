@@ -696,7 +696,7 @@ export default function AdminAllocation({
                       {a.username || `auditor.${a.name.toLowerCase().replace(/[^a-z]/g, '')}`}
                     </td>
                     <td style={{ fontFamily: 'monospace', color: '#34d399', background: 'rgba(30, 58, 138, 0.2)' }}>
-                      {a.initial_password || 'Audit@2025#'}
+                      {a.initial_password || 'Changed by user'}
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{a.email}</td>
                   </tr>

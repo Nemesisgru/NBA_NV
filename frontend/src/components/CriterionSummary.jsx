@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, RefreshCw, Award, CheckCircle, AlertCircle, AlertTriangle, XCircle, Printer, Download, FileText } from 'lucide-react';
 
+// Values the Admin hid for this audit arrive as null for HODs / Auditors
+const hv = (v, suffix = '') => (v === null ? 'Hidden' : (v === undefined ? '-' : `${v}${suffix}`));
+
 export default function CriterionSummary({ selectedDepartmentId, selectedCycleId, onSelectCriterion }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -94,11 +97,11 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
         <div style={{ background: '#162032', border: '1px solid #243247', borderRadius: '12px', padding: '18px' }}>
           <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>OVERALL SCORE</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '6px' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f8fafc' }}>{totals.validated_marks}</span>
+            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f8fafc' }}>{hv(totals.validated_marks)}</span>
             <span style={{ fontSize: '0.9rem', color: '#64748b' }}>/ {totals.max_marks}</span>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#818cf8', marginTop: '4px' }}>
-            Percentage: {totals.percentage}%
+            Percentage: {hv(totals.percentage, '%')}
           </div>
         </div>
 
@@ -106,7 +109,7 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
           <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>OVERALL GRADE</div>
           <div style={{ marginTop: '8px' }}>
             <span className={`badge badge-${(totals.grade || 'd').toLowerCase()}`} style={{ fontSize: '1.4rem', padding: '4px 18px' }}>
-              {totals.grade || '-'}
+              {totals.grade === null ? 'Hidden' : (totals.grade || '-')}
             </span>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
@@ -119,11 +122,11 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
             <CheckCircle size={24} color="#10b981" />
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981' }}>
-              {(totals.count_y || 0) + (totals.count_c || 0)}
+              {totals.count_y === null ? 'Hidden' : (totals.count_y || 0) + (totals.count_c || 0)}
             </span>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
-            Y: {totals.count_y || 0} | C: {totals.count_c || 0}
+            Y: {hv(totals.count_y ?? null)} | C: {hv(totals.count_c ?? null)}
           </div>
         </div>
 
@@ -183,17 +186,17 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
                   </div>
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 600, color: '#94a3b8' }}>{r.max_marks}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>{r.validated_marks}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600, color: '#38bdf8' }}>{r.percentage}%</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>{hv(r.validated_marks)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 600, color: '#38bdf8' }}>{hv(r.percentage, '%')}</td>
                 <td style={{ textAlign: 'center' }}>
                   <span className={`badge badge-${(r.grade || 'd').toLowerCase()}`}>
-                    {r.grade}
+                    {hv(r.grade)}
                   </span>
                 </td>
-                <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 700 }}>{r.count_y}</td>
-                <td style={{ textAlign: 'center', color: '#3b82f6', fontWeight: 700 }}>{r.count_c}</td>
-                <td style={{ textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{r.count_w}</td>
-                <td style={{ textAlign: 'center', color: '#ef4444', fontWeight: 700 }}>{r.count_d}</td>
+                <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 700 }}>{hv(r.count_y)}</td>
+                <td style={{ textAlign: 'center', color: '#3b82f6', fontWeight: 700 }}>{hv(r.count_c)}</td>
+                <td style={{ textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{hv(r.count_w)}</td>
+                <td style={{ textAlign: 'center', color: '#ef4444', fontWeight: 700 }}>{hv(r.count_d)}</td>
                 <td style={{ textAlign: 'center', color: '#64748b' }}>{r.unscored}</td>
                 <td style={{ textAlign: 'center' }}>
                   <button
@@ -212,17 +215,17 @@ export default function CriterionSummary({ selectedDepartmentId, selectedCycleId
               <td style={{ color: '#fff' }}>TOTAL</td>
               <td style={{ color: '#fff' }}>Overall Institutional Academic Audit Score</td>
               <td style={{ textAlign: 'right', color: '#e2e8f0' }}>{totals.max_marks}</td>
-              <td style={{ textAlign: 'right', color: '#818cf8', fontSize: '1rem' }}>{totals.validated_marks}</td>
-              <td style={{ textAlign: 'right', color: '#10b981', fontSize: '1rem' }}>{totals.percentage}%</td>
+              <td style={{ textAlign: 'right', color: '#818cf8', fontSize: '1rem' }}>{hv(totals.validated_marks)}</td>
+              <td style={{ textAlign: 'right', color: '#10b981', fontSize: '1rem' }}>{hv(totals.percentage, '%')}</td>
               <td style={{ textAlign: 'center' }}>
                 <span className={`badge badge-${(totals.grade || 'd').toLowerCase()}`} style={{ fontSize: '0.85rem' }}>
-                  {totals.grade}
+                  {hv(totals.grade)}
                 </span>
               </td>
-              <td style={{ textAlign: 'center', color: '#10b981' }}>{totals.count_y}</td>
-              <td style={{ textAlign: 'center', color: '#3b82f6' }}>{totals.count_c}</td>
-              <td style={{ textAlign: 'center', color: '#f59e0b' }}>{totals.count_w}</td>
-              <td style={{ textAlign: 'center', color: '#ef4444' }}>{totals.count_d}</td>
+              <td style={{ textAlign: 'center', color: '#10b981' }}>{hv(totals.count_y)}</td>
+              <td style={{ textAlign: 'center', color: '#3b82f6' }}>{hv(totals.count_c)}</td>
+              <td style={{ textAlign: 'center', color: '#f59e0b' }}>{hv(totals.count_w)}</td>
+              <td style={{ textAlign: 'center', color: '#ef4444' }}>{hv(totals.count_d)}</td>
               <td style={{ textAlign: 'center', color: '#64748b' }}>{totals.unscored}</td>
               <td></td>
             </tr>

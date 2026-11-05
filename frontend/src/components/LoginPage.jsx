@@ -9,8 +9,7 @@ const ROLES = [
     color: '#818cf8',
     title: 'Administrator / IQAC',
     text: 'Full access: all institutes and departments, auditor allocation, dashboard and result comparison.',
-    hint: 'admin',
-    samplePass: 'admin123'
+    hint: 'admin'
   },
   {
     id: 'auditor',
@@ -18,8 +17,7 @@ const ROLES = [
     color: '#38bdf8',
     title: 'Academic Auditor',
     text: 'Evaluates only the departments and criteria allocated by the Admin, and signs off ATRs.',
-    hint: 'auditor.raman',
-    samplePass: 'Audit@2025#'
+    hint: 'auditor.<name>'
   },
   {
     id: 'hod',
@@ -27,8 +25,7 @@ const ROLES = [
     color: '#f59e0b',
     title: 'Head of Department',
     text: "Views the auditor's report for their own department and enters the Action Taken Report.",
-    hint: 'hod.cs@krct.ac.in',
-    samplePass: 'Hod#NQ5NAt9o'
+    hint: 'hod.<dept>@<college>.ac.in'
   }
 ];
 
@@ -66,8 +63,8 @@ export default function LoginPage({ onLogin }) {
     setSelectedRoleHint(role.id);
     setForm(prev => ({
       ...prev,
-      username: role.hint,
-      password: role.samplePass || prev.password
+      // Formats such as auditor.<name> are only shown, not filled in; passwords are never shown
+      username: role.hint.includes('<') ? prev.username : role.hint
     }));
   };
 
@@ -277,19 +274,6 @@ export default function LoginPage({ onLogin }) {
                         >
                           User: {r.hint}
                         </code>
-                        {r.samplePass && (
-                          <code
-                            style={{
-                              fontSize: '0.7rem',
-                              color: 'var(--text-muted)',
-                              background: 'var(--bg-card-hover)',
-                              padding: '2px 6px',
-                              borderRadius: '4px'
-                            }}
-                          >
-                            Pass: {r.samplePass}
-                          </code>
-                        )}
                       </div>
                     </div>
                   </div>
