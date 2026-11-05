@@ -20,6 +20,10 @@ export default function AdminAllocation({
   const [searchAuditor, setSearchAuditor] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveIsError, setSaveIsError] = useState(false);
+  // Assignment table filters
+  const [collegeFilter, setCollegeFilter] = useState('ALL');
+  const [deptFilter, setDeptFilter] = useState('ALL');
+  const [assignFilter, setAssignFilter] = useState('ALL'); // 'ALL' | 'assigned' | 'unassigned'
 
   // Modals
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
@@ -49,6 +53,11 @@ export default function AdminAllocation({
   useEffect(() => {
     fetchAssignments();
   }, [selectedCycleId]);
+
+  const visibleRows = assignments.filter(a =>
+    (collegeFilter === 'ALL' || a.institute_code === collegeFilter) &&
+    (deptFilter === 'ALL' || String(a.department_id) === String(deptFilter)) &&
+    (assignFilter === 'ALL' || (assignFilter === 'assigned' ? a.assigned : !a.assigned)));
 
   // Update auditor selection
   const handleAuditorChange = (deptId, auditorField, auditorObj) => {
@@ -114,8 +123,10 @@ export default function AdminAllocation({
       });
       const json = await res.json();
       if (json.status === 'success') {
-        setSaveStatus('Assignment updated successfully!');
-        await fetchAssignments();
+        setSaveStatus(`Saved: ${assignment.institute_code} - ${assignment.department_code}`);
+        // Update only this row so unsaved choices in other rows are kept
+        setAssignments(prev => prev.map(a => (a.department_id === assignment.department_id
+          ? { ...a, id: json.assignment_id, assigned: true, deployment_check: json.check } : a)));
       } else {
         failed = true;
         setSaveStatus(json.error || 'Failed to save assignment');
@@ -284,7 +295,7 @@ export default function AdminAllocation({
             boxShadow: activeTab === 'assignments' ? '0 2px 8px var(--primary-light)' : undefined
           }}
         >
-          Department Auditor Assignments ({assignments.length})
+          Department Auditor Assignments ({assignments.filter(a => a.assigned).length} / {assignments.length})
         </button>
         <button
           onClick={() => setActiveTab('pool')}
@@ -320,6 +331,43 @@ export default function AdminAllocation({
             {saveStatus && <span style={{ fontSize: '0.75rem', color: saveIsError ? '#ef4444' : '#10b981', fontWeight: 700 }}>{saveStatus}</span>}
           </div>
 
+          {/* Choose the college and department to assign auditors to */}
+          <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.8rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>College:
+              <select value={collegeFilter} onChange={(e) => { setCollegeFilter(e.target.value); setDeptFilter('ALL'); }}
+                style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}>
+                <option value="ALL">All colleges</option>
+                {institutes.map(i => <option key={i.code} value={i.code}>{i.code}</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>Department:
+              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
+                style={{ width: '200px', padding: '5px 8px', fontSize: '0.8rem' }}>
+                <option value="ALL">All departments</option>
+                {assignments.filter(a => collegeFilter === 'ALL' || a.institute_code === collegeFilter).map(a => (
+                  <option key={a.department_id} value={a.department_id}>{a.institute_code} - {a.department_code}</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontWeight: 600, color: 'var(--chip-label)' }}>Show:</span>
+              {[['ALL', 'All'], ['unassigned', 'Not assigned'], ['assigned', 'Assigned']].map(([key, text]) => (
+                <button key={key} onClick={() => setAssignFilter(key)}
+                  style={{
+                    padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, borderRadius: '6px', cursor: 'pointer',
+                    border: assignFilter === key ? '1px solid transparent' : '1px solid var(--chip-border)',
+                    background: assignFilter === key ? 'var(--chip-active-bg)' : 'var(--chip-bg)',
+                    color: assignFilter === key ? '#fff' : 'var(--chip-text)'
+                  }}>
+                  {text}
+                </button>
+              ))}
+            </div>
+            <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+              Auditors from the same college are not offered. Click Save on each row you change.
+            </span>
+          </div>
+
           <div style={{ overflowX: 'auto' }}>
             <table className="audit-table">
               <thead>
@@ -334,7 +382,12 @@ export default function AdminAllocation({
                 </tr>
               </thead>
               <tbody>
-                {assignments.map(row => {
+                {visibleRows.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px' }}>
+                    {loading ? 'Loading departments...' : 'No departments match the filters.'}
+                  </td></tr>
+                )}
+                {visibleRows.map(row => {
                   const a1Set = new Set(row.auditor_1_criteria || []);
                   const a2Set = new Set(row.auditor_2_criteria || []);
                   const isA1All = criteriaList.length > 0 && a1Set.size === criteriaList.length;
@@ -473,12 +526,12 @@ export default function AdminAllocation({
                       <td>
                         <div style={{ 
                           fontSize: '0.725rem', 
-                          color: row.deployment_check?.includes('Warning') ? '#ef4444' : '#10b981',
+                          color: !row.assigned ? 'var(--text-muted)' : row.deployment_check?.includes('Warning') ? '#ef4444' : '#10b981',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px'
                         }}>
-                          {row.deployment_check?.includes('Warning') ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
+                          {!row.assigned || row.deployment_check?.includes('Warning') ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
                           <span>{row.deployment_check || 'Rule verified'}</span>
                         </div>
                       </td>

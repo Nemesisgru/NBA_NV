@@ -883,16 +883,31 @@ def save_cycle_questions(request):
 
 @role_required('Admin')
 def assignments_list(request):
-    """List auditor assignments by cycle with individual auditor criteria"""
+    """Every department with its auditor assignment for the cycle (unassigned departments included)"""
     cycle_id = request.GET.get('cycle_id')
     cycle = AuditCycle.objects.filter(id=cycle_id).first() if cycle_id else AuditCycle.objects.filter(is_active=True).first()
     if not cycle:
         cycle = AuditCycle.objects.first()
 
     assignments = []
-    for a in AuditAssignment.objects.filter(cycle=cycle).select_related('department__institute', 'auditor_1__user', 'auditor_2__user'):
+    existing = {a.department_id: a for a in AuditAssignment.objects.filter(cycle=cycle)
+                .select_related('department__institute', 'auditor_1__user', 'auditor_1__institute',
+                                'auditor_2__user', 'auditor_2__institute')}
+    for dept in Department.objects.select_related('institute').order_by('institute__code', 'code'):
+        a = existing.get(dept.id)
+        if not a:
+            assignments.append({
+                'id': None, 'assigned': False,
+                'department_id': dept.id, 'department_code': dept.code, 'department_name': dept.name,
+                'institute_code': dept.institute.code,
+                'auditor_1': None, 'auditor_2': None, 'auditor_1_criteria': [], 'auditor_2_criteria': [],
+                'assigned_criteria': [], 'deployment_check': 'Not assigned yet',
+                'digital_review_from': '', 'digital_review_to': '', 'physical_audit_date': '',
+                'status': 'Not started',
+            })
+            continue
         assignments.append({
-            'id': a.id,
+            'id': a.id, 'assigned': True,
             'department_id': a.department_id,
             'department_code': a.department.code,
             'department_name': a.department.name,
@@ -959,6 +974,8 @@ def save_assignment(request):
             }, status=400)
     if a1 and a2 and a1.id == a2.id:
         return JsonResponse({'error': 'Auditor 1 and Auditor 2 must be different people.'}, status=400)
+    if not a1 and not a2 and not AuditAssignment.objects.filter(department_id=dept_id, cycle_id=cycle_id).exists():
+        return JsonResponse({'error': 'Choose at least one auditor before saving.'}, status=400)
 
     check_msg = "Deployment verified"
 

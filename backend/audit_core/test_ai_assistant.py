@@ -527,3 +527,26 @@ class MultiScopeTests(AIAssistantBase):
         self.assertEqual(res['criteria'][0]['highest'], 'CA - ME')
         self.assertEqual([c['college'] for c in res['colleges']], ['CA', 'CB'])
         self.assertTrue(any('Not every question is scored' in n for n in res['notes']))
+
+
+# ---------------------------------------------------------------- auditor allocation lists every department
+class AllocationListTests(AIAssistantBase):
+    def test_all_departments_listed_and_unassigned_can_be_assigned(self):
+        self.login(self.admin)
+        rows = self.client.get(f'/api/assignments/?cycle_id={self.cur.id}').json()['assignments']
+        self.assertEqual(len(rows), 4)
+        by_dept = {r['department_id']: r for r in rows}
+        self.assertTrue(by_dept[self.b1.id]['assigned'])
+        self.assertFalse(by_dept[self.a2.id]['assigned'])
+        # Empty save of an unassigned department is refused
+        r = self.post('/api/assignments/save/', {'department_id': self.a2.id, 'cycle_id': self.cur.id})
+        self.assertEqual(r.status_code, 400)
+        # Own-college auditor refused, other-college auditor accepted
+        r = self.post('/api/assignments/save/', {'department_id': self.a2.id, 'cycle_id': self.cur.id,
+                                                 'auditor_1_id': self.auditor.id})
+        self.assertEqual(r.status_code, 400)
+        r = self.post('/api/assignments/save/', {'department_id': self.b2.id, 'cycle_id': self.cur.id,
+                                                 'auditor_1_id': self.auditor.id, 'auditor_1_criteria': ['C1']})
+        self.assertEqual(r.json()['status'], 'success')
+        rows = self.client.get(f'/api/assignments/?cycle_id={self.cur.id}').json()['assignments']
+        self.assertTrue({r['department_id']: r for r in rows}[self.b2.id]['assigned'])

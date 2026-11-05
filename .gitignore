@@ -6,3 +6,6 @@ frontend/dist/
 login.md
 backend/generated_reports/
 backend/evidence_files/
+
+# Local database backups (contain logins and audit data)
+backend/backups/
