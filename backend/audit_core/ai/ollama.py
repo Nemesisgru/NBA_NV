@@ -1,6 +1,7 @@
 """Backend-only adapter for a locally hosted Ollama server.
 
-* The URL and model come from settings.AUDIT_AI only; users cannot supply them.
+* The URL comes from settings.AUDIT_AI only. The model is AUDIT_AI_MODEL unless the Admin picked another
+  model that is installed in this Ollama server (AuditSettings.ai_model); other users cannot choose it.
 * The URL must point to this machine or a private network address.
 * Calls are bounded by timeouts, a process-wide concurrency limit and output/context limits.
 * Nothing here logs prompts or model output.
@@ -40,6 +41,41 @@ def _slots():
         return _semaphore
 
 
+STATUS_CACHE_KEY = 'audit-ai-status'
+
+
+def active_model():
+    """The model used for every call: the Admin's choice, else the configured default"""
+    from ..models import AuditSettings
+    chosen = AuditSettings.objects.values_list('ai_model', flat=True).first()
+    return chosen or config()['MODEL']
+
+
+def installed_models():
+    """[{'name', 'size', 'family'}] of the models installed in the local Ollama server"""
+    tags = _request('/api/tags', timeout=config()['CONNECT_TIMEOUT'])
+    out = []
+    for m in tags.get('models', []):
+        name = m.get('name') or m.get('model')
+        if name:
+            d = m.get('details') or {}
+            out.append({'name': name, 'size': d.get('parameter_size', ''), 'family': d.get('family', '')})
+    return sorted(out, key=lambda m: m['name'])
+
+
+def set_active_model(name):
+    """Admin only (checked by the view). '' restores the default. Refuses models not installed in Ollama."""
+    from ..models import AuditSettings
+    name = (name or '').strip()
+    if name and name not in {m['name'] for m in installed_models()}:
+        raise AIUnavailable(f"The model '{name[:120]}' is not installed in the local Ollama server.")
+    s = AuditSettings.objects.first() or AuditSettings.objects.create()
+    s.ai_model = '' if name == config()['MODEL'] else name
+    s.save(update_fields=['ai_model'])
+    cache.delete(STATUS_CACHE_KEY)
+    return active_model()
+
+
 def base_url():
     """The configured Ollama URL, refused unless it is local or on a private network"""
     url = config()['OLLAMA_URL'].rstrip('/')
@@ -75,24 +111,25 @@ def _request(path, payload=None, timeout=5.0):
 
 
 def status(use_cache=True):
-    """{'enabled', 'available', 'model', 'reason'}; cached briefly so the UI can poll it cheaply"""
+    """{'enabled', 'available', 'model', 'default_model', 'installed', 'reason'}; cached briefly for cheap polling"""
     cfg = config()
+    model = active_model()
+    base = {'model': model, 'default_model': cfg['MODEL'], 'installed': []}
     if not cfg['ENABLED']:
-        return {'enabled': False, 'available': False, 'model': cfg['MODEL'], 'reason': 'The AI assistant is disabled by the administrator.'}
-    key = 'audit-ai-status'
-    if use_cache and (cached := cache.get(key)):
+        return {**base, 'enabled': False, 'available': False, 'reason': 'The AI assistant is disabled by the administrator.'}
+    if use_cache and (cached := cache.get(STATUS_CACHE_KEY)) and cached.get('model') == model:
         return cached
     try:
-        tags = _request('/api/tags', timeout=cfg['CONNECT_TIMEOUT'])
-        names = {m.get('name') for m in tags.get('models', [])} | {m.get('model') for m in tags.get('models', [])}
-        if cfg['MODEL'] in names:
-            result = {'enabled': True, 'available': True, 'model': cfg['MODEL'], 'reason': ''}
+        installed = installed_models()
+        base['installed'] = installed
+        if model in {m['name'] for m in installed}:
+            result = {**base, 'enabled': True, 'available': True, 'reason': ''}
         else:
-            result = {'enabled': True, 'available': False, 'model': cfg['MODEL'],
-                      'reason': f"The configured model '{cfg['MODEL']}' is not installed in Ollama."}
+            result = {**base, 'enabled': True, 'available': False,
+                      'reason': f"The selected model '{model}' is not installed in Ollama."}
     except AIUnavailable as e:
-        result = {'enabled': True, 'available': False, 'model': cfg['MODEL'], 'reason': str(e)}
-    cache.set(key, result, 30)
+        result = {**base, 'enabled': True, 'available': False, 'reason': str(e)}
+    cache.set(STATUS_CACHE_KEY, result, 30)
     return result
 
 
@@ -105,9 +142,10 @@ def chat_json(system, user, schema, num_predict=None):
     if not slots.acquire(timeout=2):
         raise AIUnavailable('The local model is busy with another request. Please try again shortly.')
     started = time.monotonic()
+    model = active_model()
     try:
         payload = {
-            'model': cfg['MODEL'],
+            'model': model,
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
             'stream': False,
             'format': schema,
@@ -127,10 +165,10 @@ def chat_json(system, user, schema, num_predict=None):
             raise AIUnavailable('The local model returned output that is not valid JSON.')
         if not isinstance(parsed, dict):
             raise AIUnavailable('The local model returned output in an unexpected shape.')
-        log.info('ollama call ok model=%s seconds=%.1f', cfg['MODEL'], time.monotonic() - started)
+        log.info('ollama call ok model=%s seconds=%.1f', model, time.monotonic() - started)
         return parsed
     except AIUnavailable as e:
-        log.warning('ollama call failed model=%s seconds=%.1f reason=%s', cfg['MODEL'], time.monotonic() - started, e)
+        log.warning('ollama call failed model=%s seconds=%.1f reason=%s', model, time.monotonic() - started, e)
         raise
     finally:
         slots.release()

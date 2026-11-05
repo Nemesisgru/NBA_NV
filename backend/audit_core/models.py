@@ -173,6 +173,8 @@ class AuditSettings(models.Model):
     physical_gap_threshold = models.FloatField(default=0.15)
     # Increases whenever a grade threshold changes, so cycles scored under different rules can be told apart
     version = models.PositiveIntegerField(default=1)
+    # Local Ollama model chosen by the Admin in the AI Assistant; blank = AUDIT_AI_MODEL from settings
+    ai_model = models.CharField(max_length=120, blank=True, default='')
 
     THRESHOLD_FIELDS = ('y_threshold', 'c_threshold', 'w_threshold')
 

@@ -5,7 +5,7 @@ import CriterionSummary from './components/CriterionSummary';
 import KRGIDashboard from './components/KRGIDashboard';
 import ATRWorkspace from './components/ATRWorkspace';
 import AdminAllocation from './components/AdminAllocation';
-import ComparisonPage from './components/ComparisonPage';
+import ComparisonPage, { COMPARE_SELECTION_KEY } from './components/ComparisonPage';
 import AuditQuestionSetup from './components/AuditQuestionSetup';
 import AIAssistant from './components/AIAssistant';
 import CycleFilterBar from './components/CycleFilterBar';
@@ -74,6 +74,7 @@ export default function App() {
   };
 
   const resetSession = () => {
+    sessionStorage.removeItem(COMPARE_SELECTION_KEY);
     setCurrentUser(null);
     setBootstrap(null);
     setLoading(false);
@@ -329,6 +330,7 @@ export default function App() {
 
         {currentTab === 'assistant' && (
           <AIAssistant
+            userRole={userRole}
             selectedDepartmentId={selectedDepartment}
             selectedCycleId={selectedCycle}
             onOpenCriterion={(code) => {

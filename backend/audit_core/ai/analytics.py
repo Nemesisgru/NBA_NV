@@ -15,6 +15,7 @@ Definitions (fields that exist in this application; nothing is inferred beyond t
   * Finding approved      - the finding's Action Taken Report has the auditor sign-off.
 """
 from collections import defaultdict
+from dataclasses import replace
 from datetime import date
 
 from django.db.models import Max
@@ -229,6 +230,100 @@ def get_audit_summary(scope, criterion=None):
         result['notes'].append(f"The grade thresholds changed after this cycle was scored (recorded {result['rubric']['version']}, "
                                f"current v{result['rubric']['current_version']}); grades use the current thresholds.")
     result['refs'] = {'criteria': [r['criterion'] for r in crit_rows]}
+    return result
+
+
+# ---------------------------------------------------------------- 1b. compare departments / colleges
+def compare_departments(scope, criterion=None):
+    """Side-by-side scores of every department (and college) in scope for the same cycle and questions.
+
+    Each department is computed with get_audit_summary on a one-department scope, so the figures are
+    identical to that department's own summary. All departments share the cycle's question set,
+    so they are directly comparable.
+    """
+    per_dept = []
+    for d in scope.departments:
+        s = get_audit_summary(replace(scope, department_ids=[d.id], departments=[d], colleges=[]), criterion)
+        per_dept.append((d, s))
+
+    titles = _criterion_titles()
+    crit_codes = [c['criterion'] for c in (per_dept[0][1]['criteria'] if per_dept else [])]
+
+    dept_rows = []
+    for d, s in per_dept:
+        t = s['totals']
+        complete = t['questions_in_audit'] > 0 and t['submission_completed']['numerator'] == t['questions_in_audit']
+        dept_rows.append({
+            'department_id': d.id, 'department': _dept_label(d), 'college': d.institute.code,
+            'percentage': t['percentage'], 'grade': t['grade'], 'compliance': t['compliance'],
+            'submission_completed': t['submission_completed'], 'marks_obtained': t['marks_obtained'],
+            'max_marks': t['max_marks'], 'findings': t['findings'], 'atr_open': t['atr_open'],
+            'evidence_verified': t['evidence_verified'], 'fully_scored': complete,
+        })
+    ranked = sorted([r for r in dept_rows if r['percentage'] is not None], key=lambda r: -r['percentage'])
+    for i, r in enumerate(ranked):
+        r['rank'] = i + 1
+    dept_rows.sort(key=lambda r: (r.get('rank') or 10 ** 6, r['department']))
+
+    crit_rows = []
+    for code in crit_codes:
+        values = {}
+        for d, s in per_dept:
+            c = next((x for x in s['criteria'] if x['criterion'] == code), None)
+            values[str(d.id)] = {'percentage': c['percentage'], 'grade': c['grade'],
+                                 'scored': c['submission_completed']} if c else None
+        scored = [(d, values[str(d.id)]['percentage']) for d, _ in per_dept
+                  if values[str(d.id)] and values[str(d.id)]['percentage'] is not None]
+        row = {'criterion': code, 'title': titles.get(code, ''), 'values': values}
+        if scored:
+            hi = max(scored, key=lambda x: x[1])
+            lo = min(scored, key=lambda x: x[1])
+            row.update({'highest': _dept_label(hi[0]), 'highest_percent': hi[1],
+                        'lowest': _dept_label(lo[0]), 'lowest_percent': lo[1],
+                        'spread': round(hi[1] - lo[1], 2),
+                        'average_percent': round(sum(p for _, p in scored) / len(scored), 2)})
+        crit_rows.append(row)
+
+    college_rows = []
+    by_college = defaultdict(list)
+    for d in scope.departments:
+        by_college[d.institute.code].append(d)
+    if len(by_college) > 1:
+        for code, depts in sorted(by_college.items()):
+            s = get_audit_summary(replace(scope, department_ids=[d.id for d in depts], departments=depts, colleges=[code]),
+                                  criterion)
+            t = s['totals']
+            college_rows.append({
+                'college': code, 'departments_compared': len(depts),
+                'percentage': t['percentage'], 'grade': t['grade'], 'submission_completed': t['submission_completed'],
+                'findings': t['findings'], 'atr_open': t['atr_open'],
+                'criteria': {c['criterion']: {'percentage': c['percentage'], 'grade': c['grade']} for c in s['criteria']},
+            })
+
+    result = _base('compare_departments', 'Department comparison', scope, rubric=rubric_snapshot(scope.cycle),
+                   criterion_filter=criterion,
+                   totals={'departments_compared': len(dept_rows), 'colleges_compared': len(by_college),
+                           'departments_ranked': len(ranked), 'criteria_compared': len(crit_rows),
+                           'highest': ranked[0]['department'] if ranked else None,
+                           'highest_percent': ranked[0]['percentage'] if ranked else None,
+                           'lowest': ranked[-1]['department'] if ranked else None,
+                           'lowest_percent': ranked[-1]['percentage'] if ranked else None},
+                   departments=dept_rows, criteria=crit_rows, colleges=college_rows,
+                   department_columns=[{'id': str(r['department_id']), 'label': r['department']} for r in dept_rows])
+    if len(dept_rows) < 2:
+        result['notes'].append('Select at least two departments (or colleges) to compare.')
+    unscored = [r['department'] for r in dept_rows if not r['fully_scored']]
+    if unscored:
+        result['notes'].append('Not every question is scored yet for: ' + ', '.join(unscored[:10]) +
+                               (' and others' if len(unscored) > 10 else '') +
+                               '. Their percentage counts unscored questions as 0 marks, so the ranking may change.')
+    no_data = [r['department'] for r in dept_rows if r['percentage'] is None]
+    if no_data:
+        result['notes'].append('No evaluations recorded yet (not ranked): ' + ', '.join(no_data[:10]) + '.')
+    if college_rows:
+        result['notes'].append('College figures are totals across the selected departments of each college only.')
+    result['notes'].append('All departments are compared on the same audit cycle and question set; rank 1 = highest percentage.')
+    result['refs'] = {'criteria': crit_codes}
     return result
 
 

@@ -92,6 +92,11 @@ OPERATIONS = {
         'filters': {'criterion': _criterion},
         'label': 'Summarise the audit',
     },
+    'compare_departments': {
+        'fn': lambda scope, f: analytics.compare_departments(scope, f['criterion']),
+        'filters': {'criterion': _criterion},
+        'label': 'Compare departments / colleges side by side',
+    },
     'missing_evidence': {
         'fn': lambda scope, f: analytics.get_missing_evidence(scope, f['criterion'], f['limit'], f['mandatory_only']),
         'filters': {'criterion': _criterion, 'limit': _limit, 'mandatory_only': _bool},

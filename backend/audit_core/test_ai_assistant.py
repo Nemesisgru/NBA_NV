@@ -454,3 +454,76 @@ class ApplyColumnsToOtherAuditsTests(AIAssistantBase):
                                                      'apply_columns_to': 'all'})
         self.assertEqual(len(r.json()['columns_applied_to']), 2)
         self.assertTrue(all(c.visible_columns['grade'] is False for c in AuditCycle.objects.all()))
+
+
+# ---------------------------------------------------------------- local model selection
+class ModelSelectionTests(AIAssistantBase):
+    INSTALLED = [{'name': 'qwen3.5:9b', 'size': '9.0B', 'family': 'qwen'},
+                 {'name': 'llama3.2:3b', 'size': '3.2B', 'family': 'llama'}]
+
+    def test_admin_selects_installed_model_and_calls_use_it(self):
+        self.login(self.admin)
+        with mock.patch.object(ollama, 'installed_models', return_value=self.INSTALLED):
+            r = self.post('/api/ai/model/', {'model': 'llama3.2:3b'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['model'], 'llama3.2:3b')
+        self.assertTrue(r.json()['available'])
+        self.assertEqual(ollama.active_model(), 'llama3.2:3b')
+        with mock.patch.object(ollama, '_request', return_value={'message': {'content': '{}'}}) as req:
+            ollama.chat_json('s', 'u', {})
+        self.assertEqual(req.call_args[0][1]['model'], 'llama3.2:3b')
+        # Empty name restores the configured default
+        with mock.patch.object(ollama, 'installed_models', return_value=self.INSTALLED):
+            self.post('/api/ai/model/', {'model': ''})
+        self.assertEqual(ollama.active_model(), ollama.config()['MODEL'])
+
+    def test_model_not_installed_is_refused(self):
+        self.login(self.admin)
+        with mock.patch.object(ollama, 'installed_models', return_value=self.INSTALLED):
+            r = self.post('/api/ai/model/', {'model': 'some-remote-model:latest'})
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(ollama.active_model(), ollama.config()['MODEL'])
+
+    def test_only_admin_can_change_model(self):
+        for user in (self.hod_a1, self.aud_user):
+            self.login(user)
+            with mock.patch.object(ollama, 'installed_models', return_value=self.INSTALLED):
+                r = self.post('/api/ai/model/', {'model': 'llama3.2:3b'})
+            self.assertEqual(r.status_code, 403)
+        self.assertEqual(ollama.active_model(), ollama.config()['MODEL'])
+
+
+# ---------------------------------------------------------------- several colleges / departments
+class MultiScopeTests(AIAssistantBase):
+    def test_admin_selects_several_departments_and_colleges(self):
+        req = FakeRequest(self.admin, 'Admin')
+        s = resolve_scope(req, department_ids=[self.a1.id, str(self.b1.id)], cycle_id=self.cur.id)
+        self.assertEqual(sorted(s.department_ids), sorted([self.a1.id, self.b1.id]))
+        s = resolve_scope(req, colleges=['CA', 'cb'], cycle_id=self.cur.id)
+        self.assertEqual(len(s.department_ids), 4)
+        with self.assertRaises(ScopeError):  # department outside the selected colleges
+            resolve_scope(req, colleges=['CA'], department_ids=[self.a1.id, self.b1.id], cycle_id=self.cur.id)
+        with self.assertRaises(ScopeError):
+            resolve_scope(req, colleges=['CA', 'ZZ'], cycle_id=self.cur.id)
+
+    def test_list_cannot_widen_access(self):
+        with self.assertRaises(ScopeError):
+            resolve_scope(FakeRequest(self.hod_a1, 'HOD'), department_ids=[self.a1.id, self.a2.id], cycle_id=self.cur.id)
+        with self.assertRaises(ScopeError):
+            resolve_scope(FakeRequest(self.aud_user, 'Auditor'), colleges=['CA', 'CB'], cycle_id=self.cur.id)
+
+    def test_compare_departments_via_chat(self):
+        self.login(self.admin)
+        r = self.post('/api/ai/chat/', {'message': 'Compare these departments in C1', 'narrate': False,
+                                        'department_ids': [self.a1.id, self.b1.id], 'cycle_id': self.cur.id})
+        self.assertEqual(r.status_code, 200)
+        res = r.json()['message']['result']
+        self.assertEqual(res['operation'], 'compare_departments')
+        self.assertEqual(res['criterion_filter'], 'C1')
+        rows = {d['department']: d for d in res['departments']}
+        self.assertEqual(rows['CA - ME']['rank'], 1)   # (9 + 8) / 20 = 85%
+        self.assertEqual(rows['CA - ME']['percentage'], 85.0)
+        self.assertEqual(rows['CB - ME']['rank'], 2)   # 2 / 20 = 10%
+        self.assertEqual(res['criteria'][0]['highest'], 'CA - ME')
+        self.assertEqual([c['college'] for c in res['colleges']], ['CA', 'CB'])
+        self.assertTrue(any('Not every question is scored' in n for n in res['notes']))

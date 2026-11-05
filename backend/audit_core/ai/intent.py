@@ -20,6 +20,7 @@ STARTERS = [
     'Search the evidence for industry MoU.',
     'Show overdue corrective actions.',
     'Compare this audit with the previous compatible cycle.',
+    'Compare the selected departments criterion by criterion.',
     'Generate a detailed draft audit report.',
 ]
 
@@ -52,6 +53,10 @@ def rule_based(message):
         op = 'generate_report'
     elif re.search(r'(search|find|look).*(evidence|document|file)|(evidence|document|file)s?\s+(say|mention|contain)|in the (evidence|documents)', t):
         op = 'search_evidence'
+    elif (re.search(r'compar|\brank|versus|\bvs\b|benchmark|\bbest\b|\bworst\b|\btop\b|highest|lowest|side by side', t)
+          and re.search(r'department|dept|college|institut|across|between', t)
+          and not re.search(r'cycle|previous|last (audit|semester)|earlier|trend', t)):
+        op = 'compare_departments'
     elif re.search(r'compar|previous|last (audit|cycle)|earlier cycle|trend|improv|declin', t):
         op = 'compare_cycles'
     elif re.search(r'overdue|corrective|action taken|\batr\b|action plan|pending action|due date', t):
@@ -69,7 +74,8 @@ def rule_based(message):
 
 INTENT_SYSTEM = """You map a user's question about an academic audit to ONE allowlisted operation.
 Operations: audit_summary, missing_evidence, pending_corrective_actions, criterion_findings,
-compare_cycles, search_evidence (search the text of uploaded evidence documents), generate_report,
+compare_cycles (same departments, another audit cycle), compare_departments (departments / colleges side by side
+in this cycle), search_evidence (search the text of uploaded evidence documents), generate_report,
 explain_previous (explain the last result in plain language), clarify.
 Allowed filters: criterion (C1..C9), grade (Y, C, W, D), status (Open, In Progress, Closed), overdue_only (true/false),
 mandatory_only (true/false), owner (a name), query (a few search words, only for search_evidence).

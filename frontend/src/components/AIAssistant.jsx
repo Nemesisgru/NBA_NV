@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Send, RotateCcw, FileText, Download, AlertTriangle, CheckCircle2, Loader2, Info, ShieldAlert, Cpu } from 'lucide-react';
+import { COMPARE_SELECTION_KEY } from './ComparisonPage';
 
 // Audit AI Assistant. Every number and table here comes from the backend's verified analytics;
 // the local model only adds optional narration, shown as plain text (never rendered as HTML).
@@ -60,6 +61,53 @@ function CriterionBars({ rows }) {
           <span style={{ minWidth: '48px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.percentage}%</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Dropdown with checkboxes; an empty selection means "all authorised"
+function MultiSelect({ label, allLabel, options, selected, onChange, width = '220px', extra }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const chosen = options.filter(o => selected.includes(o.value));
+  const summary = chosen.length === 0 ? allLabel
+    : chosen.length <= 2 ? chosen.map(o => o.label).join(', ') : `${chosen.length} selected`;
+  const toggle = (v) => onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
+  return (
+    <div ref={boxRef} style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', position: 'relative' }}>
+      {label}
+      <button type="button" onClick={() => setOpen(!open)} aria-haspopup="listbox" aria-expanded={open}
+        style={{ width, textAlign: 'left', padding: '8px 12px', fontSize: '0.85rem', borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border-input)', background: 'var(--bg-input)', color: 'var(--text-primary)', cursor: 'pointer',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{open ? '\u25B2' : '\u25BC'}</span>
+      </button>
+      {open && (
+        <div role="listbox" aria-multiselectable="true" style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 60, minWidth: width, maxHeight: '320px', overflowY: 'auto',
+          background: 'var(--bg-modal)', border: '1px solid var(--border-modal)', borderRadius: 'var(--radius-md)',
+          boxShadow: '0 16px 40px -12px rgba(0, 0, 0, 0.35)', padding: '8px'
+        }}>
+          <div style={{ display: 'flex', gap: '6px', paddingBottom: '6px', marginBottom: '4px', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => onChange(options.map(o => o.value))}>Select all</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => onChange([])}>{allLabel}</button>
+            {extra}
+          </div>
+          {options.map(o => (
+            <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+              <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(o.value)} />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -168,6 +216,37 @@ function ResultView({ result, onOpenCriterion }) {
           { key: 'finding_approved', label: 'Approved' }]} />
       </>
     );
+  } else if (result.operation === 'compare_departments') {
+    const cols = result.department_columns || [];
+    const cell = (v) => (v && v.percentage !== null && v.percentage !== undefined)
+      ? <span>{v.percentage}% {gradeBadge(v.grade)}</span> : '-';
+    body = (
+      <>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+          <Kpi label="Departments compared" value={t.departments_compared} sub={`${t.colleges_compared} college(s) · ${t.criteria_compared} criteria${result.criterion_filter ? ` (${result.criterion_filter} only)` : ''}`} />
+          <Kpi label="Highest" value={t.highest_percent !== null && t.highest_percent !== undefined ? `${t.highest_percent}%` : '-'} sub={t.highest} color="var(--grade-y)" />
+          <Kpi label="Lowest" value={t.lowest_percent !== null && t.lowest_percent !== undefined ? `${t.lowest_percent}%` : '-'} sub={t.lowest} color="var(--grade-d)" />
+        </div>
+        <DataTable caption="Ranking (overall for the questions compared)" rows={result.departments} columns={[
+          { key: 'rank', label: 'Rank' }, { key: 'department', label: 'Department' },
+          { key: 'percentage', label: '%' }, { key: 'grade', label: 'Grade', render: r => gradeBadge(r.grade) },
+          { key: 'submission_completed', label: 'Scored' }, { key: 'compliance', label: 'Status' },
+          { key: 'findings', label: 'Findings' }, { key: 'atr_open', label: 'ATR open' }]} />
+        <DataTable caption="Criterion by criterion" rows={result.criteria} columns={[
+          { key: 'criterion', label: 'Criterion', render: critCode },
+          ...cols.map(c => ({ key: `d${c.id}`, label: c.label, render: r => cell(r.values?.[c.id]) })),
+          { key: 'highest', label: 'Highest', render: r => r.highest ? `${r.highest} (${r.highest_percent}%)` : '-' },
+          { key: 'lowest', label: 'Lowest', render: r => r.lowest ? `${r.lowest} (${r.lowest_percent}%)` : '-' },
+          { key: 'spread', label: 'Gap (points)' }]} />
+        {result.colleges?.length > 0 && (
+          <DataTable caption="By college (selected departments only)" rows={result.colleges} columns={[
+            { key: 'college', label: 'College' }, { key: 'departments_compared', label: 'Departments' },
+            { key: 'percentage', label: '%' }, { key: 'grade', label: 'Grade', render: r => gradeBadge(r.grade) },
+            ...(result.criteria || []).map(c => ({ key: `c${c.criterion}`, label: c.criterion, render: r => cell(r.criteria?.[c.criterion]) })),
+            { key: 'findings', label: 'Findings' }]} />
+        )}
+      </>
+    );
   } else if (result.operation === 'compare_cycles') {
     body = (
       <>
@@ -267,11 +346,13 @@ function NarrationView({ narration, onOpenCriterion }) {
   );
 }
 
-export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onOpenCriterion }) {
+export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onOpenCriterion, userRole }) {
   const [status, setStatus] = useState(null);
+  const [modelSaving, setModelSaving] = useState(false);
   const [error, setError] = useState('');
-  const [college, setCollege] = useState('');
-  const [departmentId, setDepartmentId] = useState(selectedDepartmentId ? String(selectedDepartmentId) : '');
+  const [colleges, setColleges] = useState([]);
+  const [departmentIds, setDepartmentIds] = useState(selectedDepartmentId ? [String(selectedDepartmentId)] : []);
+  const departmentId = departmentIds.length === 1 ? departmentIds[0] : '';
   const [cycleId, setCycleId] = useState(selectedCycleId ? String(selectedCycleId) : '');
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
@@ -292,6 +373,22 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
       setStatus(json);
     } catch (e) { setError(e.message); }
   };
+  // Admin only: choose which installed local Ollama model the assistant uses for everyone
+  const changeModel = async (name) => {
+    setModelSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/ai/model/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not change the model');
+      setStatus(prev => ({ ...prev, ...json }));
+    } catch (e) { setError(e.message); }
+    finally { setModelSaving(false); }
+  };
   const loadReports = async () => {
     const res = await fetch('/api/ai/reports/');
     if (res.ok) setReportsList((await res.json()).reports);
@@ -307,13 +404,30 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
   }, [reportsList]);
 
   const options = status?.options || { colleges: [], departments: [], cycles: [] };
-  const deptChoices = useMemo(() => options.departments.filter(d => !college || d.college === college), [options, college]);
-  const scope = { college: college || undefined, department_id: departmentId || undefined, cycle_id: cycleId || undefined };
+  const deptChoices = useMemo(() => options.departments.filter(d => colleges.length === 0 || colleges.includes(d.college)), [options, colleges]);
+  const deptLabel = (id) => { const d = options.departments.find(x => String(x.id) === id); return d ? `${d.college} - ${d.code}` : ''; };
+  const scope = { colleges, department_ids: departmentIds, cycle_id: cycleId || undefined };
   const scopeLabel = [
-    departmentId ? (() => { const d = options.departments.find(x => String(x.id) === departmentId); return d ? `${d.college} - ${d.code}` : ''; })()
-      : (college ? `${college} (all authorised departments)` : 'All authorised departments'),
+    departmentIds.length > 0
+      ? (departmentIds.length <= 4 ? departmentIds.map(deptLabel).join(', ') : `${departmentIds.length} selected departments`)
+      : (colleges.length ? `${colleges.join(', ')} (all authorised departments)` : 'All authorised departments'),
     options.cycles.find(c => String(c.id) === cycleId)?.name || 'no audit cycle selected'
   ].join(' · ');
+
+  const changeColleges = (list) => {
+    setColleges(list);
+    // Keep only departments that belong to the chosen colleges
+    if (list.length) setDepartmentIds(ids => ids.filter(id => list.includes(options.departments.find(d => String(d.id) === id)?.college)));
+  };
+  // Departments picked on the Results Comparison page (kept for this login session)
+  const comparisonIds = (() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(COMPARE_SELECTION_KEY) || '[]');
+      const known = new Set(options.departments.map(d => d.id));
+      return Array.isArray(saved) ? saved.filter(id => known.has(id)).map(String) : [];
+    } catch { return []; }
+  })();
+  const useComparisonSelection = () => { setColleges([]); setDepartmentIds(comparisonIds); };
 
   const resetConversation = async () => {
     if (conversationId) await fetch(`/api/ai/conversations/${conversationId}/`, { method: 'DELETE' });
@@ -386,11 +500,30 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <Bot size={22} color="var(--accent)" />
             <h2 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Audit AI Assistant</h2>
-            <span className="badge" style={status?.available
-              ? { background: 'var(--grade-y-bg)', color: 'var(--grade-y)' }
-              : { background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}>
-              {status?.available ? `Local model: ${status.model}` : 'AI narration unavailable'}
-            </span>
+            {userRole === 'Admin' && status?.installed?.length > 0 ? (
+              <label className="badge" title="Models installed in the local Ollama server. Applies to every user."
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: status.available ? 'var(--grade-y-bg)' : 'var(--grade-w-bg)', color: status.available ? 'var(--grade-y)' : 'var(--grade-w)' }}>
+                Local model:
+                <select value={status.model} disabled={modelSaving} onChange={(e) => changeModel(e.target.value)}
+                  style={{ width: 'auto', padding: '2px 6px', fontSize: '0.72rem', fontWeight: 700 }}>
+                  {!status.installed.some(m => m.name === status.model) && (
+                    <option value={status.model}>{status.model} (not installed)</option>
+                  )}
+                  {status.installed.map(m => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}{m.size ? ` (${m.size})` : ''}{m.name === status.default_model ? ' - default' : ''}
+                    </option>
+                  ))}
+                </select>
+                {modelSaving && <span style={{ fontWeight: 500 }}>saving...</span>}
+              </label>
+            ) : (
+              <span className="badge" style={status?.available
+                ? { background: 'var(--grade-y-bg)', color: 'var(--grade-y)' }
+                : { background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}>
+                {status?.available ? `Local model: ${status.model}` : 'AI narration unavailable'}
+              </span>
+            )}
             <span className="badge" style={{ background: 'var(--grade-w-bg)', color: 'var(--grade-w)' }}>Draft — requires auditor review</span>
           </div>
           {!status?.available && status?.reason && (
@@ -399,18 +532,18 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
             </p>
           )}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px', alignItems: 'center' }}>
-            <label style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>College
-              <select value={college} onChange={e => { setCollege(e.target.value); setDepartmentId(''); }} style={{ width: '150px' }}>
-                <option value="">All authorised</option>
-                {options.colleges.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-              </select>
-            </label>
-            <label style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>Department
-              <select value={departmentId} onChange={e => setDepartmentId(e.target.value)} style={{ width: '220px' }}>
-                <option value="">All authorised in scope</option>
-                {deptChoices.map(d => <option key={d.id} value={d.id}>{d.college} - {d.code}</option>)}
-              </select>
-            </label>
+            <MultiSelect label="College(s)" allLabel="All authorised" width="170px"
+              options={options.colleges.map(c => ({ value: c.code, label: c.code }))}
+              selected={colleges} onChange={changeColleges} />
+            <MultiSelect label="Department(s)" allLabel="All in scope" width="240px"
+              options={deptChoices.map(d => ({ value: String(d.id), label: `${d.college} - ${d.code}` }))}
+              selected={departmentIds} onChange={setDepartmentIds}
+              extra={comparisonIds.length > 0 && (
+                <button type="button" className="btn btn-outline btn-sm" onClick={useComparisonSelection}
+                  title="Use the departments selected on the Results Comparison page">
+                  From Results Comparison ({comparisonIds.length})
+                </button>
+              )} />
             <label style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>Audit cycle
               <select value={cycleId} onChange={e => setCycleId(e.target.value)} style={{ width: '230px' }}>
                 <option value="">Select a cycle</option>
@@ -422,7 +555,14 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
               AI explanation
             </label>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>Active scope: <strong>{scopeLabel}</strong></div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>Active scope: <strong>{scopeLabel}</strong></span>
+            {comparisonIds.length > 0 && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={useComparisonSelection}>
+                Use Results Comparison selection ({comparisonIds.length})
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Conversation */}
@@ -486,10 +626,10 @@ export default function AIAssistant({ selectedDepartmentId, selectedCycleId, onO
           Add AI-drafted narrative (slower)
         </label>
         <button className="btn btn-primary" onClick={generateReport} disabled={reportBusy || !departmentId || !cycleId}
-          title={!departmentId || !cycleId ? 'Select one department and an audit cycle' : ''}>
+          title={!departmentId || !cycleId ? 'Select exactly one department and an audit cycle' : ''}>
           {reportBusy ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />} Generate draft report
         </button>
-        {(!departmentId || !cycleId) && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Select one department and an audit cycle first.</div>}
+        {(!departmentId || !cycleId) && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Select exactly one department and an audit cycle first (reports cover one department).</div>}
 
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {reportsList.length === 0 && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No reports yet.</div>}

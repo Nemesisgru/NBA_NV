@@ -50,6 +50,7 @@ def _rate_limited(request, bucket, limit, window_seconds):
 
 def _scope_from(request, data, require_cycle=True):
     return resolve_scope(request, college=data.get('college'), department_id=data.get('department_id'),
+                         colleges=data.get('colleges'), department_ids=data.get('department_ids'),
                          cycle_id=data.get('cycle_id'), require_cycle=require_cycle)
 
 
@@ -77,6 +78,26 @@ def ai_status(request):
         'operations': {k: v['label'] for k, v in OPERATIONS.items()},
         'options': scope_options(request),
     })
+
+
+@role_required('Admin')
+def ai_model_select(request):
+    """Admin picks which installed local Ollama model the assistant uses for everyone ('' = default)"""
+    if request.method != 'POST':
+        return _error('POST required', 405)
+    try:
+        data = _body(request)
+    except OperationError as e:
+        return _error(str(e))
+    name = data.get('model', '')
+    if not isinstance(name, str):
+        return _error('Invalid model name')
+    try:
+        model = ollama.set_active_model(name)
+    except ollama.AIUnavailable as e:
+        return _error(str(e))
+    log.info('ai model changed by user=%s model=%s', request.user.id, model)
+    return JsonResponse(ollama.status(use_cache=False))
 
 
 # ---------------------------------------------------------------- deterministic analytics (no AI)
@@ -184,7 +205,7 @@ def ai_message_narrate(request, message_id):
     if not (msg.narration or {}).get('pending'):
         return JsonResponse({'message': _message_json(msg)})
     stored = msg.result.get('scope') or {}
-    scope = resolve_scope(request, department_id=stored['department_ids'][0] if len(stored.get('department_ids', [])) == 1 else None,
+    scope = resolve_scope(request, department_ids=stored.get('department_ids') or None,
                           cycle_id=stored.get('cycle_id'), require_cycle=False)
     if not set(stored.get('department_ids', [])) <= set(scope.department_ids):
         raise ScopeError('This result is outside your current access')

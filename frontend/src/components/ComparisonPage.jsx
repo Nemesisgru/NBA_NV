@@ -5,8 +5,21 @@ const MAX_COMPARE = 10;
 // Ten distinguishable series colours for the dark theme
 const palette = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#a855f7', '#ef4444', '#84cc16', '#38bdf8', '#f97316'];
 
+// Kept for the browser session so switching tabs does not reset the selection; cleared on logout
+export const COMPARE_SELECTION_KEY = 'compare:selectedDeptIds';
+
+const loadSavedSelection = (departments) => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(COMPARE_SELECTION_KEY) || '[]');
+    const known = new Set(departments.map(d => d.id));
+    return Array.isArray(saved) ? saved.filter(id => known.has(id)).slice(0, MAX_COMPARE) : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function ComparisonPage({ departments, selectedCycleId, criteriaList }) {
-  const [selectedDeptIds, setSelectedDeptIds] = useState([]);
+  const [selectedDeptIds, setSelectedDeptIds] = useState(() => loadSavedSelection(departments));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -16,6 +29,12 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
       setSelectedDeptIds(departments.slice(0, 3).map(d => d.id));
     }
   }, [departments]);
+
+  useEffect(() => {
+    if (selectedDeptIds.length > 0) {
+      sessionStorage.setItem(COMPARE_SELECTION_KEY, JSON.stringify(selectedDeptIds));
+    }
+  }, [selectedDeptIds]);
 
   const fetchComparison = async () => {
     if (selectedDeptIds.length === 0) {

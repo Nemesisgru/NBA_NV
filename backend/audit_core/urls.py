@@ -25,6 +25,7 @@ urlpatterns = [
     path('evidence/<int:evidence_id>/', evidence.evidence_detail, name='evidence_detail'),
     path('evidence/<int:evidence_id>/download/', evidence.evidence_download, name='evidence_download'),
     path('ai/status/', ai_views.ai_status, name='ai_status'),
+    path('ai/model/', ai_views.ai_model_select, name='ai_model_select'),
     path('ai/analytics/', ai_views.ai_analytics, name='ai_analytics'),
     path('ai/chat/', ai_views.ai_chat, name='ai_chat'),
     path('ai/messages/<int:message_id>/narrate/', ai_views.ai_message_narrate, name='ai_message_narrate'),
