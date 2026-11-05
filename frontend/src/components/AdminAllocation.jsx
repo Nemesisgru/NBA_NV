@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   UserCheck, UserPlus, Building, PlusCircle, CheckCircle2, 
-  AlertCircle, Shield, RefreshCw, Save, Search, Download, Upload, Copy, Key 
+  AlertCircle, Shield, RefreshCw, Save, Search, Download, Upload, Copy, Key, RotateCcw
 } from 'lucide-react';
 
 export default function AdminAllocation({ 
@@ -59,11 +59,39 @@ export default function AdminAllocation({
     (deptFilter === 'ALL' || String(a.department_id) === String(deptFilter)) &&
     (assignFilter === 'ALL' || (assignFilter === 'assigned' ? a.assigned : !a.assigned)));
 
+  // Deployment rules (also enforced by the server):
+  //  * not from the department's own college
+  //  * not from the same department (discipline) in any college, e.g. no ECE auditor for ECE / ECE (VLSI)
+  //  * Auditor 2 is not from Auditor 1's department (any college)
+  //  * one department per auditor in this audit cycle
+  const discipline = (code) => (code || '').split('(')[0].trim().toUpperCase();
+  const auditorDept = (aud) => discipline(aud?.dept_name || aud?.dept);
+  const auditorChoices = (row, slot) => {
+    const current = row[slot]?.id;
+    const partner = slot === 'auditor_1' ? row.auditor_2 : row.auditor_1;
+    const partnerDept = partner ? auditorDept(auditors.find(a => a.id === partner.id) || partner) : '';
+    const usedElsewhere = new Set(assignments.filter(a => a.department_id !== row.department_id)
+      .flatMap(a => [a.auditor_1?.id, a.auditor_2?.id]).filter(Boolean));
+    return auditors.filter(a => a.id === current || (
+      a.institute_code !== row.institute_code &&
+      auditorDept(a) !== discipline(row.department_code) &&
+      a.id !== partner?.id &&
+      (!partnerDept || auditorDept(a) !== partnerDept) &&
+      !usedElsewhere.has(a.id)
+    ));
+  };
+
   // Update auditor selection
   const handleAuditorChange = (deptId, auditorField, auditorObj) => {
     setAssignments(prev => prev.map(a => {
       if (a.department_id !== deptId) return a;
-      return { ...a, [auditorField]: auditorObj };
+      const next = { ...a, [auditorField]: auditorObj };
+      // A new Auditor 1 from the same department as Auditor 2 clears Auditor 2 (and vice versa)
+      const otherField = auditorField === 'auditor_1' ? 'auditor_2' : 'auditor_1';
+      if (auditorObj && next[otherField] && auditorDept(auditorObj) === auditorDept(auditors.find(x => x.id === next[otherField].id) || next[otherField])) {
+        next[otherField] = null;
+      }
+      return next;
     }));
   };
 
@@ -98,6 +126,41 @@ export default function AdminAllocation({
       const isAll = currentList.length === allCodes.length;
       return { ...a, [fieldName]: isAll ? [] : allCodes };
     }));
+  };
+
+  // Reset one department: clear its auditors so they can be reassigned (scores already entered are kept)
+  const resetAssignmentRow = async (row) => {
+    const label = `${row.institute_code} - ${row.department_code}`;
+    const blank = { id: null, assigned: false, auditor_1: null, auditor_2: null, auditor_1_criteria: [], auditor_2_criteria: [],
+      assigned_criteria: [], deployment_check: 'Not assigned yet', status: 'Not started' };
+    if (!row.assigned) {  // nothing saved yet: just clear the unsaved choices
+      setAssignments(prev => prev.map(a => (a.department_id === row.department_id ? { ...a, ...blank } : a)));
+      return;
+    }
+    const cycleName = cycles.find(c => c.id === selectedCycleId);
+    if (!window.confirm(`Reset the auditor assignment of ${label}${cycleName ? ` for ${cycleName.academic_year} ${cycleName.semester} (${cycleName.cycle_type})` : ''}?\n\n` +
+      'Both auditors are removed from this department and become available for other departments. ' +
+      'Scores and ATRs already entered are kept.')) return;
+    setSaveIsError(false);
+    setSaveStatus(`Resetting ${label}...`);
+    let failed = false;
+    try {
+      const res = await fetch('/api/assignments/reset/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ department_id: row.department_id, cycle_id: selectedCycleId })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.error || 'Reset failed');
+      setAssignments(prev => prev.map(a => (a.department_id === row.department_id ? { ...a, ...blank } : a)));
+      setSaveStatus(`${label} reset. Choose new auditors and click Save.` +
+        (json.scores_kept ? ` (${json.scores_kept} scores already entered are kept.)` : ''));
+    } catch (err) {
+      failed = true;
+      setSaveStatus(err.message || 'Reset failed');
+    } finally {
+      setSaveIsError(failed);
+      setTimeout(() => setSaveStatus(''), 6000);
+    }
   };
 
   // Save assignment to backend with individual criteria for each auditor
@@ -364,7 +427,7 @@ export default function AdminAllocation({
               ))}
             </div>
             <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              Auditors from the same college are not offered. Click Save on each row you change.
+              Not offered: same college, same department in any college, Auditor 1's department (for Auditor 2), or already assigned in this cycle. Click Save on each row.
             </span>
           </div>
 
@@ -378,7 +441,7 @@ export default function AdminAllocation({
                   <th style={{ minWidth: '280px' }}>Second Auditor (Auditor 2) & Assigned Criteria</th>
                   <th style={{ minWidth: '150px' }}>Deployment Check</th>
                   <th style={{ width: '130px' }}>Status</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Save</th>
+                  <th style={{ width: '100px', textAlign: 'center' }}>Save / Reset</th>
                 </tr>
               </thead>
               <tbody>
@@ -409,8 +472,7 @@ export default function AdminAllocation({
                           style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
                         >
                           <option value="">-- Unassigned --</option>
-                          {auditors
-                            .filter(a => a.institute_code !== row.institute_code || a.id === row.auditor_1?.id)
+                          {auditorChoices(row, 'auditor_1')
                             .map(a => (
                               <option key={a.id} value={a.id}>
                                 {a.name} ({a.institute_code} - {a.dept_name})
@@ -471,8 +533,7 @@ export default function AdminAllocation({
                           style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
                         >
                           <option value="">-- Unassigned --</option>
-                          {auditors
-                            .filter(a => a.institute_code !== row.institute_code || a.id === row.auditor_2?.id)
+                          {auditorChoices(row, 'auditor_2')
                             .map(a => (
                               <option key={a.id} value={a.id}>
                                 {a.name} ({a.institute_code} - {a.dept_name})
@@ -551,14 +612,24 @@ export default function AdminAllocation({
                         </select>
                       </td>
 
-                      {/* Save Button */}
-                      <td style={{ textAlign: 'center' }}>
+                      {/* Save / Reset Buttons */}
+                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
                           onClick={() => saveAssignmentRow(row)}
                           className="btn btn-primary btn-sm"
                           style={{ padding: '4px 8px' }}
+                          title="Save this department's auditors"
                         >
                           <Save size={13} />
+                        </button>
+                        <button
+                          onClick={() => resetAssignmentRow(row)}
+                          className="btn btn-outline btn-sm"
+                          style={{ padding: '4px 8px', marginLeft: '6px' }}
+                          disabled={!row.assigned && !row.auditor_1 && !row.auditor_2}
+                          title={row.assigned ? 'Reset: remove both auditors so the department can be reassigned' : 'Clear the unsaved choices'}
+                        >
+                          <RotateCcw size={13} />
                         </button>
                       </td>
                     </tr>

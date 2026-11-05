@@ -16,6 +16,7 @@ urlpatterns = [
     path('cycle-questions/save/', views.save_cycle_questions, name='save_cycle_questions'),
     path('assignments/', views.assignments_list, name='assignments_list'),
     path('assignments/save/', views.save_assignment, name='save_assignment'),
+    path('assignments/reset/', views.reset_assignment, name='reset_assignment'),
     path('departments/add/', views.add_department, name='add_department'),
     path('auditors/add/', views.add_auditor, name='add_auditor'),
     path('auditors/template/', views.download_auditor_template, name='download_auditor_template'),

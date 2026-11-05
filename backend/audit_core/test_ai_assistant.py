@@ -545,8 +545,65 @@ class AllocationListTests(AIAssistantBase):
         r = self.post('/api/assignments/save/', {'department_id': self.a2.id, 'cycle_id': self.cur.id,
                                                  'auditor_1_id': self.auditor.id})
         self.assertEqual(r.status_code, 400)
+        free = Auditor.objects.create(name='Free CA', institute=self.ca, dept_name='EE')
         r = self.post('/api/assignments/save/', {'department_id': self.b2.id, 'cycle_id': self.cur.id,
-                                                 'auditor_1_id': self.auditor.id, 'auditor_1_criteria': ['C1']})
+                                                 'auditor_1_id': free.id, 'auditor_1_criteria': ['C1']})
         self.assertEqual(r.json()['status'], 'success')
         rows = self.client.get(f'/api/assignments/?cycle_id={self.cur.id}').json()['assignments']
         self.assertTrue({r['department_id']: r for r in rows}[self.b2.id]['assigned'])
+
+
+class AllocationRuleTests(AIAssistantBase):
+    def setUp(self):
+        super().setUp()
+        self.login(self.admin)
+        self.me_cb = Auditor.objects.create(name='ME from CB', institute=self.cb, dept_name='ME')
+        self.ee_cb = Auditor.objects.create(name='EE from CB', institute=self.cb, dept_name='EE')
+        self.ee2_cb = Auditor.objects.create(name='EE2 from CB', institute=self.cb, dept_name='EE')
+        self.ce_cb = Auditor.objects.create(name='CE from CB', institute=self.cb, dept_name='CE')
+
+    def save(self, dept, a1=None, a2=None):
+        return self.post('/api/assignments/save/', {'department_id': dept.id, 'cycle_id': self.cur.id,
+                                                    'auditor_1_id': a1.id if a1 else None,
+                                                    'auditor_2_id': a2.id if a2 else None})
+
+    def test_same_department_in_another_college_refused(self):
+        r = self.save(self.a1, self.me_cb)          # ME auditor for CA - ME
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('any college', r.json()['error'])
+
+    def test_second_auditor_not_from_first_auditors_department(self):
+        r = self.save(self.a1, self.ee_cb, self.ee2_cb)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('both from EE', r.json()['error'])
+        self.assertEqual(self.save(self.a1, self.ee_cb, self.ce_cb).json()['status'], 'success')
+
+    def test_auditor_only_one_department_per_cycle(self):
+        self.assertEqual(self.save(self.a1, self.ce_cb).json()['status'], 'success')
+        r = self.save(self.a2, self.ce_cb)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('already assigned to CA - ME', r.json()['error'])
+        # Re-saving the same department is fine
+        self.assertEqual(self.save(self.a1, self.ce_cb).json()['status'], 'success')
+
+
+class AllocationResetTests(AIAssistantBase):
+    def test_reset_frees_auditor_and_keeps_scores(self):
+        self.login(self.admin)
+        a = AuditAssignment.objects.get(cycle=self.cur, department=self.b1)
+        r = self.post('/api/assignments/reset/', {'department_id': self.b1.id, 'cycle_id': self.cur.id})
+        self.assertEqual(r.json()['status'], 'success')
+        self.assertTrue(r.json()['removed'])
+        self.assertEqual(r.json()['scores_kept'], 1)
+        self.assertFalse(AuditAssignment.objects.filter(id=a.id).exists())
+        self.assertTrue(AuditEvaluation.objects.filter(cycle=self.cur, department=self.b1).exists())
+        # The freed auditor can now be assigned to another department
+        r = self.post('/api/assignments/save/', {'department_id': self.b2.id, 'cycle_id': self.cur.id,
+                                                 'auditor_1_id': self.auditor.id})
+        self.assertEqual(r.json()['status'], 'success')
+
+    def test_reset_admin_only(self):
+        self.login(self.hod_b1)
+        r = self.post('/api/assignments/reset/', {'department_id': self.b1.id, 'cycle_id': self.cur.id})
+        self.assertEqual(r.status_code, 403)
+        self.assertTrue(AuditAssignment.objects.filter(cycle=self.cur, department=self.b1).exists())

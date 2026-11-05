@@ -941,6 +941,15 @@ def assignments_list(request):
         'assignments': assignments
     })
 
+def discipline(code):
+    """Department discipline without the specialisation, e.g. 'ECE (VLSI)' -> 'ECE', 'CSE (CS)' -> 'CSE'"""
+    return (code or '').split('(')[0].strip().upper()
+
+
+def auditor_discipline(aud):
+    return discipline(aud.dept_name or (aud.department.code if aud.department_id else ''))
+
+
 @role_required('Admin')
 def save_assignment(request):
     """Assign individual auditors to departments with individual criteria assignment"""
@@ -974,6 +983,28 @@ def save_assignment(request):
             }, status=400)
     if a1 and a2 and a1.id == a2.id:
         return JsonResponse({'error': 'Auditor 1 and Auditor 2 must be different people.'}, status=400)
+    # No auditor of the same department (discipline) in any college
+    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if aud and auditor_discipline(aud) and auditor_discipline(aud) == discipline(dept.code):
+            return JsonResponse({
+                'error': f"{label} ({aud.name}) is from {aud.dept_name} and cannot audit a {dept.code} department of any college."
+            }, status=400)
+    # The two auditors of a department come from different departments
+    if a1 and a2 and auditor_discipline(a1) and auditor_discipline(a1) == auditor_discipline(a2):
+        return JsonResponse({
+            'error': f"Auditor 1 and Auditor 2 are both from {a1.dept_name}. Choose a second auditor from another department."
+        }, status=400)
+    # An auditor audits only one department per audit cycle
+    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if not aud:
+            continue
+        other = (AuditAssignment.objects.filter(cycle_id=cycle_id).exclude(department_id=dept_id)
+                 .filter(Q(auditor_1=aud) | Q(auditor_2=aud)).select_related('department__institute').first())
+        if other:
+            return JsonResponse({
+                'error': f"{label} ({aud.name}) is already assigned to {other.department.institute.code} - "
+                         f"{other.department.code} in this audit cycle."
+            }, status=400)
     if not a1 and not a2 and not AuditAssignment.objects.filter(department_id=dept_id, cycle_id=cycle_id).exists():
         return JsonResponse({'error': 'Choose at least one auditor before saving.'}, status=400)
 
@@ -996,6 +1027,26 @@ def save_assignment(request):
     )
 
     return JsonResponse({'status': 'success', 'assignment_id': assign.id, 'check': check_msg})
+
+@role_required('Admin')
+def reset_assignment(request):
+    """Remove the auditor assignment of one department in one cycle so it can be reassigned.
+    Scores and ATRs already entered for the department are kept."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    try:
+        data = json.loads(request.body.decode('utf-8') or '{}')
+        dept_id, cycle_id = int(data.get('department_id')), int(data.get('cycle_id'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'department_id and cycle_id required'}, status=400)
+    dept = Department.objects.select_related('institute').filter(id=dept_id).first()
+    if not dept or not AuditCycle.objects.filter(id=cycle_id).exists():
+        return JsonResponse({'error': 'Department or audit cycle not found'}, status=404)
+    deleted, _ = AuditAssignment.objects.filter(department_id=dept_id, cycle_id=cycle_id).delete()
+    scored = AuditEvaluation.objects.filter(department_id=dept_id, cycle_id=cycle_id, grade__in=['Y', 'C', 'W', 'D']).count()
+    return JsonResponse({'status': 'success', 'removed': bool(deleted), 'scores_kept': scored,
+                         'department': f"{dept.institute.code} - {dept.code}"})
+
 
 @role_required('Admin')
 def add_department(request):

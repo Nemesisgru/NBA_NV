@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   CheckSquare, Square, Filter, Search, Save, AlertTriangle, 
-  ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2, Paperclip
+  ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2, Paperclip, Loader2
 } from 'lucide-react';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
 import ColumnPicker from './ColumnPicker';
@@ -49,6 +49,18 @@ export default function CriterionEvaluation({
   const [savingId, setSavingId] = useState(null);
   const [lastSavedTime, setLastSavedTime] = useState(null);
 
+  // Auto-save: every change is queued per question and sent shortly after typing stops,
+  // always with the row's latest values. Failed saves are retried; pending changes are sent
+  // before switching criterion / department / cycle and the browser warns before closing.
+  const AUTOSAVE_DELAY = 800;
+  const RETRY_DELAY = 5000;
+  const metricsRef = useRef(metrics);
+  const dirtyRef = useRef(new Map());     // metricId -> { department_id, cycle_id }
+  const inFlightRef = useRef(new Set());
+  const timerRef = useRef(null);
+  const [saveState, setSaveState] = useState({ status: 'idle', error: '' }); // idle | pending | saving | error
+  useEffect(() => { metricsRef.current = metrics; }, [metrics]);
+
   // Columns fixed for this audit (Audit Questions tab). The server sends the current setting with every
   // criterion it loads, so a change by the Admin applies without logging in again; for other logins the
   // server also leaves out the data of hidden columns. The Admin can change the columns here for their own
@@ -83,8 +95,18 @@ export default function CriterionEvaluation({
   };
 
   useEffect(() => {
+    flushSaves();  // send anything still queued for the previous criterion / department / cycle
     fetchCriterion();
   }, [activeCriterionCode, selectedDepartmentId, selectedCycleId]);
+
+  // Warn before closing the tab while changes are not yet saved; send them when leaving the page
+  useEffect(() => {
+    const warn = (e) => {
+      if (dirtyRef.current.size || inFlightRef.current.size) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => { window.removeEventListener('beforeunload', warn); flushSaves(); };
+  }, []);
 
   // Recalculate local metric values
   const handleInputChange = (metricId, field, value) => {
@@ -137,45 +159,87 @@ export default function CriterionEvaluation({
       return { ...m, evaluation: evalData };
     }));
 
-    // Trigger save
-    debouncedSave(metricId, field, (field === 'items_checked' || field === 'valid_items') ? limit2(value) : value);
+    queueSave(metricId);
   };
 
-  // Auto save to Django backend
-  const debouncedSave = async (metricId, field, value) => {
-    setSavingId(metricId);
-    try {
-      const metric = metrics.find(m => m.id === metricId);
-      const evalData = metric ? metric.evaluation : {};
+  const queueSave = (metricId) => {
+    dirtyRef.current.set(metricId, { department_id: selectedDepartmentId, cycle_id: selectedCycleId });
+    setSaveState({ status: 'pending', error: '' });
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flushSaves, AUTOSAVE_DELAY);
+  };
 
+  const refreshSaveState = (error) => {
+    if (error) setSaveState({ status: 'error', error: error.message, retry: error.retry });
+    else if (inFlightRef.current.size) setSaveState({ status: 'saving', error: '' });
+    else if (dirtyRef.current.size) setSaveState(prev => (prev.status === 'error' ? prev : { status: 'pending', error: '' }));
+    else setSaveState({ status: 'idle', error: '' });
+  };
+
+  // Send every queued question (one request at a time per question, latest values)
+  const flushSaves = () => {
+    clearTimeout(timerRef.current);
+    for (const [metricId, ctx] of [...dirtyRef.current]) {
+      if (inFlightRef.current.has(metricId)) continue;  // re-sent when the running save finishes
+      const metric = metricsRef.current.find(m => m.id === metricId);
+      dirtyRef.current.delete(metricId);
+      if (!metric) continue;
+      const ev = metric.evaluation || {};
       const payload = {
-        department_id: selectedDepartmentId,
-        cycle_id: selectedCycleId,
+        ...ctx,
         metric_id: metricId,
-        items_checked: evalData.items_checked,
-        valid_items: evalData.valid_items,
-        auditor_remarks: evalData.auditor_remarks,
-        evidence_status: evalData.evidence_status || 'Complete',
-        physical_check_result: evalData.physical_check_result || 'Matches claim',
-        is_flagged_for_atr: evalData.is_flagged_for_atr || false,
-        [field]: value
+        items_checked: ev.items_checked,
+        valid_items: ev.valid_items,
+        auditor_remarks: ev.auditor_remarks,
+        evidence_status: ev.evidence_status || 'Complete',
+        physical_check_result: ev.physical_check_result || 'Matches claim',
+        is_flagged_for_atr: ev.is_flagged_for_atr || false
       };
-
-      const res = await fetch('/api/evaluations/save/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      if (result.status === 'success') {
-        setLastSavedTime(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
-      console.error("Auto save failed:", err);
-    } finally {
-      setTimeout(() => setSavingId(null), 400);
+      inFlightRef.current.add(metricId);
+      setSavingId(metricId);
+      refreshSaveState();
+      fetch('/api/evaluations/save/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true
+      })
+        .then(async res => {
+          const result = await res.json().catch(() => ({}));
+          if (!res.ok || result.status !== 'success') {
+            throw Object.assign(new Error(result.error || `Save failed (${res.status})`), { status: res.status });
+          }
+          setLastSavedTime(new Date().toLocaleTimeString());
+          return null;
+        })
+        .catch(err => {
+          // Network / server errors: keep the change queued and try again shortly.
+          // A refusal by the server (e.g. no permission) is shown and not retried.
+          const retry = !err.status || err.status >= 500 || err.status === 429;
+          if (retry) {
+            if (!dirtyRef.current.has(metricId)) dirtyRef.current.set(metricId, ctx);
+            clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(flushSaves, RETRY_DELAY);
+          }
+          return { message: err.message || 'Save failed', retry };
+        })
+        .then(error => {
+          inFlightRef.current.delete(metricId);
+          setSavingId(id => (id === metricId ? null : id));
+          refreshSaveState(error);
+          if (!error && dirtyRef.current.has(metricId)) flushSaves();
+        });
     }
   };
+
+  const saveIndicator = canEdit && (saveState.status !== 'idle' || lastSavedTime) && (
+    <span style={{
+      fontSize: '0.725rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600,
+      color: saveState.status === 'error' ? 'var(--grade-d)' : saveState.status === 'idle' ? '#10b981' : 'var(--text-secondary)'
+    }}>
+      {saveState.status === 'error' ? <><AlertTriangle size={13} /> Not saved: {saveState.error}{saveState.retry ? '. Retrying...' : ''}</>
+        : saveState.status === 'saving' ? <><Loader2 size={13} className="animate-spin" /> Auto-saving...</>
+        : saveState.status === 'pending' ? <><Save size={13} /> Unsaved changes (auto-save)</>
+        : <><CheckCircle2 size={13} /> All changes auto-saved at {lastSavedTime}</>}
+    </span>
+  );
 
 
   const evaluableMetrics = useMemo(() => metrics.filter(m => !m.is_header), [metrics]);
@@ -353,10 +417,8 @@ export default function CriterionEvaluation({
       )}
 
       {/* Auditors still need save feedback when the admin toolbar is hidden */}
-      {!showToolbar && lastSavedTime && (
-        <span style={{ fontSize: '0.725rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', alignSelf: 'flex-end' }}>
-          <CheckCircle2 size={13} /> Saved at {lastSavedTime}
-        </span>
+      {!showToolbar && saveIndicator && (
+        <div style={{ alignSelf: 'flex-end' }}>{saveIndicator}</div>
       )}
 
       {/* Action Toolbar */}
@@ -442,11 +504,7 @@ export default function CriterionEvaluation({
             <RefreshCw size={14} />
           </button>
 
-          {lastSavedTime && (
-            <span style={{ fontSize: '0.725rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <CheckCircle2 size={13} /> Saved at {lastSavedTime}
-            </span>
-          )}
+          {saveIndicator}
         </div>
       </div>
       )}
