@@ -39,6 +39,7 @@ urlpatterns = [
     path('auth/me/', views.auth_me_view, name='auth_me_view'),
     path('auth/logout/', views.auth_logout_view, name='auth_logout_view'),
     path('auth/change-password/', views.auth_change_password_view, name='auth_change_password'),
+    path('accounts/password/', views.account_password_view, name='account_password'),
     path('export/department-excel/', views.export_department_excel, name='export_department_excel'),
     path('export/department-pdf/', views.export_department_pdf, name='export_department_pdf'),
 ]

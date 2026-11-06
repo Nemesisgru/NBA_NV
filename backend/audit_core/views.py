@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 from html import escape as html_escape
 from django.conf import settings
@@ -36,6 +37,9 @@ def get_settings():
     if not s:
         s = AuditSettings.objects.create()
     return s
+
+log = logging.getLogger('audit_core.security')
+
 
 def calculate_grade(percentage, settings):
     if percentage is None:
@@ -91,6 +95,66 @@ def auth_logout_view(request):
         return JsonResponse({'error': 'POST required'}, status=405)
     logout(request)
     return JsonResponse({'status': 'success'})
+
+
+def password_status(stored, user):
+    """'pending' (a password can still be shown once), 'first_login' (shown / reset, not changed yet),
+    'set' (chosen by the user) or 'no_login'"""
+    if not user:
+        return 'no_login'
+    if stored:
+        return 'pending'
+    return 'first_login' if must_change_password(user) else 'set'
+
+
+@role_required('Admin')
+def account_password_view(request):
+    """Admin: show a pending initial password once ('reveal'), or issue a new one ('reset').
+    The password is returned in this response only and is never kept in readable form afterwards."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    data = json_body(request)
+    kind, action = data.get('kind'), data.get('action')
+    try:
+        obj_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Invalid account'}, status=400)
+    if kind == 'auditor':
+        obj = Auditor.objects.select_related('user').filter(id=obj_id).first()
+        user, field = (obj.user if obj else None), 'initial_password'
+    elif kind == 'hod':
+        obj = Department.objects.select_related('hod_user').filter(id=obj_id).first()
+        user, field = (obj.hod_user if obj else None), 'hod_initial_password'
+    else:
+        return JsonResponse({'error': 'Invalid account type'}, status=400)
+    if not obj or not user:
+        return JsonResponse({'error': 'This account has no login yet'}, status=404)
+
+    if action == 'reveal':
+        pwd = getattr(obj, field)
+        if not pwd:
+            return JsonResponse({'error': 'This password was already shown or changed. Use Reset to issue a new one.'},
+                                status=400)
+        setattr(obj, field, '')
+        obj.save(update_fields=[field])
+    elif action == 'reset':
+        from .auth_utils import generate_password
+        pwd = generate_password()
+        user.set_password(pwd)
+        user.save()
+        set_must_change(user, True)
+        setattr(obj, field, '')
+        obj.save(update_fields=[field])
+        from django.contrib.sessions.models import Session
+        # End the user's open sessions so the old password stops working everywhere at once
+        for s in Session.objects.filter(expire_date__gt=timezone.now()):
+            if s.get_decoded().get('_auth_user_id') == str(user.id):
+                s.delete()
+    else:
+        return JsonResponse({'error': 'Invalid action'}, status=400)
+    log.info('account password %s by admin=%s for user=%s', action, request.user.id, user.username)
+    return JsonResponse({'status': 'success', 'username': user.username, 'password': pwd,
+                         'note': 'Shown once. The user must choose a new password at first login.'})
 
 
 def auth_change_password_view(request):
@@ -191,7 +255,8 @@ def bootstrap_data(request):
             'hod_name': d.hod_name,
             'hod_email': d.hod_email,
             'hod_username': d.hod_user.username if (is_admin and d.hod_user) else '',
-            'hod_initial_password': d.hod_initial_password if is_admin else '',
+            # Passwords are never sent in bulk; the Admin can show a pending one once, or reset it
+            'hod_password_status': password_status(d.hod_initial_password, d.hod_user) if is_admin else '',
         })
 
     visible_institutes = {d['institute_code'] for d in departments}
@@ -233,7 +298,7 @@ def bootstrap_data(request):
             'sl_no': a.sl_no,
             'name': a.name,
             'username': a.user.username if a.user else '',
-            'initial_password': a.initial_password,
+            'password_status': password_status(a.initial_password, a.user),
             'institute_code': a.institute.code if a.institute else '',
             'dept_name': a.dept_name,
             'designation': a.designation,
@@ -1317,8 +1382,8 @@ def bulk_upload_auditors(request):
             'department': dept,
             'email': auditor.email,
             'username': username,
-            # Existing logins keep their password (shown only while it has not been changed)
-            'initial_password': password or auditor.initial_password or '(unchanged - use Reset password)'
+            # Shown once; existing logins keep their password (use Reset in the Auditor Pool if lost)
+            'initial_password': password or '(unchanged - use Reset in the Auditor Pool)'
         })
 
     return JsonResponse({

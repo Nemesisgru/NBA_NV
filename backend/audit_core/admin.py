@@ -23,25 +23,27 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('code', 'name', 'institute', 'hod_name', 'display_hod_login', 'created_at')
     list_filter = ('institute',)
     search_fields = ('code', 'name', 'hod_name', 'hod_user__username')
+    exclude = ('hod_initial_password',)  # never shown here; use Show once / Reset in the app
 
     def display_hod_login(self, obj):
         if obj.hod_user:
-            return format_html('<code>{}</code> / <small>{}</small>', obj.hod_user.username, obj.hod_initial_password)
+            return format_html('<code>{}</code>', obj.hod_user.username)
         return "-"
-    display_hod_login.short_description = "HOD Login (User / Pass)"
+    display_hod_login.short_description = "HOD login"
 
 @admin.register(Auditor)
 class AuditorAdmin(admin.ModelAdmin):
     list_display = ('sl_no', 'name', 'institute', 'dept_name', 'designation', 'display_auditor_login', 'is_active')
     list_filter = ('institute', 'experience', 'is_active')
     search_fields = ('name', 'email', 'designation', 'dept_name', 'user__username')
+    exclude = ('initial_password',)  # never shown here; use Show once / Reset in the app
     list_editable = ('is_active',)
 
     def display_auditor_login(self, obj):
         if obj.user:
-            return format_html('<code>{}</code> / <small>{}</small>', obj.user.username, obj.initial_password)
+            return format_html('<code>{}</code>', obj.user.username)
         return "-"
-    display_auditor_login.short_description = "Auditor Login (User / Pass)"
+    display_auditor_login.short_description = "Auditor login"
 
 @admin.register(AuditCycle)
 class AuditCycleAdmin(admin.ModelAdmin):

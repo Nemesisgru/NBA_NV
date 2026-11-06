@@ -20,6 +20,55 @@ export default function AdminAllocation({
   const [searchAuditor, setSearchAuditor] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveIsError, setSaveIsError] = useState(false);
+  // Passwords shown once in this browser tab ('auditor:12' -> password); never kept by the server
+  const [shownPasswords, setShownPasswords] = useState({});
+  const [passwordStatus, setPasswordStatus] = useState({});
+
+  const accountPassword = async (kind, id, action, label) => {
+    if (action === 'reset' && !window.confirm(`Issue a new password for ${label}? The current password stops working at once and the user must choose a new one at first login.`)) return;
+    try {
+      const res = await fetch('/api/accounts/password/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, id, action })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not get the password');
+      setShownPasswords(prev => ({ ...prev, [`${kind}:${id}`]: json.password }));
+      setPasswordStatus(prev => ({ ...prev, [`${kind}:${id}`]: 'first_login' }));
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Password cell: pending -> "Show once"; afterwards only "Reset"
+  const PasswordCell = ({ kind, id, status, label }) => {
+    const key = `${kind}:${id}`;
+    const shown = shownPasswords[key];
+    const st = passwordStatus[key] || status;
+    if (st === 'no_login') return <span style={{ color: 'var(--text-muted)' }}>No login</span>;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        {shown ? (
+          <>
+            <code style={{ fontFamily: 'monospace', fontWeight: 700 }}>{shown}</code>
+            <button className="btn btn-outline btn-sm" style={{ padding: '2px 6px' }} title="Copy"
+              onClick={() => navigator.clipboard?.writeText(shown)}><Copy size={12} /></button>
+          </>
+        ) : st === 'pending' ? (
+          <button className="btn btn-outline btn-sm" style={{ padding: '2px 8px' }}
+            title="Shows the initial password once; it is then deleted from the server"
+            onClick={() => accountPassword(kind, id, 'reveal', label)}>Show once</button>
+        ) : (
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            {st === 'set' ? 'Set by user' : 'Waiting for first login'}
+          </span>
+        )}
+        <button className="btn btn-outline btn-sm" style={{ padding: '2px 8px' }}
+          title="Issue a new random password (shown once)"
+          onClick={() => accountPassword(kind, id, 'reset', label)}>Reset</button>
+      </span>
+    );
+  };
   // Assignment table filters
   const [collegeFilter, setCollegeFilter] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState('ALL');
@@ -459,7 +508,17 @@ export default function AdminAllocation({
                   return (
                     <tr key={row.department_id}>
                       <td style={{ fontWeight: 700, color: '#818cf8' }}>{row.institute_code}</td>
-                      <td style={{ fontWeight: 800, color: '#f8fafc' }}>{row.department_code}</td>
+                      <td style={{ fontWeight: 800, color: '#f8fafc' }}>
+                        {row.department_code}
+                        {(() => {
+                          const d = departments.find(x => x.id === row.department_id);
+                          return d?.hod_username ? (
+                            <div style={{ fontSize: '0.68rem', fontWeight: 500, marginTop: '4px' }} title={`HOD login: ${d.hod_username}`}>
+                              <PasswordCell kind="hod" id={d.id} status={d.hod_password_status} label={`HOD ${row.institute_code} - ${row.department_code}`} />
+                            </div>
+                          ) : null;
+                        })()}
+                      </td>
 
                       {/* Auditor 1 Column with Individual Criteria Chips */}
                       <td style={{ background: 'rgba(99, 102, 241, 0.03)' }}>
@@ -678,8 +737,8 @@ export default function AdminAllocation({
                   <th style={{ minWidth: '140px', background: '#172554', color: '#93c5fd' }}>
                     <Key size={12} style={{ display: 'inline', marginRight: '4px' }} /> Auto Username
                   </th>
-                  <th style={{ minWidth: '140px', background: '#172554', color: '#93c5fd' }}>
-                    Password
+                  <th style={{ minWidth: '200px', background: '#172554', color: '#93c5fd' }}>
+                    Password (shown once)
                   </th>
                   <th style={{ minWidth: '180px' }}>Email Address</th>
                 </tr>
@@ -696,7 +755,7 @@ export default function AdminAllocation({
                       {a.username || `auditor.${a.name.toLowerCase().replace(/[^a-z]/g, '')}`}
                     </td>
                     <td style={{ fontFamily: 'monospace', color: '#34d399', background: 'rgba(30, 58, 138, 0.2)' }}>
-                      {a.initial_password || 'Changed by user'}
+                      <PasswordCell kind="auditor" id={a.id} status={a.password_status} label={a.name} />
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{a.email}</td>
                   </tr>

@@ -62,7 +62,8 @@ class PasswordTests(AIAssistantBase):
         self.assertIn(self.hod_a1.username if self.hod_a1.username.startswith('hod.') else 'hod.ca.me', text)
         self.assertTrue(must_change_password(User.objects.get(id=self.admin.id)))
         aud = Auditor.objects.get(id=self.auditor.id)
-        self.assertTrue(aud.user.check_password(aud.initial_password))
+        self.assertEqual(aud.initial_password, '')  # only in the written list, not in the database
+        self.assertTrue(must_change_password(aud.user))
 
 
 class LoginLockoutTests(AIAssistantBase):
@@ -166,3 +167,33 @@ class HeaderTests(AIAssistantBase):
         body = r.content.decode('utf-8')
         self.assertIn(f'<script nonce="{nonce}">', body)
         self.assertNotIn('onclick=', body)
+
+
+class ShowOnceTests(AIAssistantBase):
+    def test_reveal_once_then_reset(self):
+        aud = Auditor.objects.create(name='Show Once', institute=self.cb, dept_name='CE')
+        create_or_update_auditor_user(aud)
+        aud.refresh_from_db()
+        self.assertEqual(aud.initial_password, '')
+        # A legacy stored password can be shown exactly once
+        aud.initial_password = 'Legacy-pass-123'
+        aud.save()
+        self.login(self.admin)
+        boot = self.client.get('/api/bootstrap/').json()
+        self.assertNotIn('initial_password', json.dumps(boot['auditors']))
+        self.assertEqual({a['id']: a for a in boot['auditors']}[aud.id]['password_status'], 'pending')
+        r = self.post('/api/accounts/password/', {'kind': 'auditor', 'id': aud.id, 'action': 'reveal'})
+        self.assertEqual(r.json()['password'], 'Legacy-pass-123')
+        r = self.post('/api/accounts/password/', {'kind': 'auditor', 'id': aud.id, 'action': 'reveal'})
+        self.assertEqual(r.status_code, 400)
+        r = self.post('/api/accounts/password/', {'kind': 'auditor', 'id': aud.id, 'action': 'reset'})
+        new = r.json()['password']
+        aud.refresh_from_db()
+        self.assertTrue(aud.user.check_password(new))
+        self.assertEqual(aud.initial_password, '')
+        self.assertTrue(must_change_password(aud.user))
+
+    def test_only_admin(self):
+        self.login(self.hod_a1)
+        r = self.post('/api/accounts/password/', {'kind': 'hod', 'id': self.a1.id, 'action': 'reset'})
+        self.assertEqual(r.status_code, 403)

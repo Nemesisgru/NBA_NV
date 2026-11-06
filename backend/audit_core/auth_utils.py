@@ -75,7 +75,7 @@ def create_or_update_auditor_user(auditor, password=None, reset=False):
         user.save()
         auditor.user = user
 
-    auditor.initial_password = pwd
+    auditor.initial_password = ''  # shown once by the caller, never kept in readable form
     auditor.save(update_fields=['user', 'initial_password'])
     set_must_change(user, True)
     return username, pwd
@@ -108,7 +108,7 @@ def create_or_update_hod_user(department, password=None, reset=False):
         user.save()
         department.hod_user = user
 
-    department.hod_initial_password = pwd
+    department.hod_initial_password = ''  # shown once by the caller, never kept in readable form
     department.save(update_fields=['hod_user', 'hod_initial_password'])
     set_must_change(user, True)
     return username, pwd
