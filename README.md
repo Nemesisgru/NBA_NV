@@ -106,15 +106,18 @@ Click into each terminal and press `Ctrl+C`, or close the terminal.
 
 Everyone signs in on the **login page** that opens at `/`. The login is kept in a Django session cookie, so refreshing the page keeps you signed in. What each role can see and change is enforced by the backend API, not only hidden in the UI:
 
-| | Admin | Auditor | HOD |
-|---|---|---|---|
-| Departments visible | All 3 institutes | Only departments allocated to them | Only their own (pickers locked) |
-| Criteria Evaluation (C1–C9) | View & edit all | Edit **only their allocated criteria** in the allocated cycle; others view-only | **View-only**, shown as the *Auditor's Report* |
-| Criterion Summary, Excel / PDF export | All departments | Allocated departments | Own department |
-| Action Taken Report | All fields, all departments | Auditor sign-off & feedback only | Root cause, action plan, target / completed date, evidence, status, HOD remarks |
-| KRGI Dashboard, Result Comparison | ✓ | – | – |
-| Auditor Allocation & Admin, Audit Questions, Django Admin (when enabled) | ✓ | – | – |
-| Other users' login credentials | ✓ | – | – |
+| | Admin | Auditor | HOD | Coll Head |
+|---|---|---|---|---|
+| Departments visible | All 3 institutes | Only departments allocated to them | Only their own (pickers locked) | Every department of their own college (college picker locked) |
+| Criteria Evaluation (C1–C9) | View & edit all | Edit **only their allocated criteria** in the allocated cycle; others view-only | **View-only**, shown as the *Auditor's Report* | **View-only**, shown as the *Auditor's Report* |
+| Criterion Summary, Excel / PDF export | All departments | Allocated departments | Own department | Departments of their college |
+| Action Taken Report | All fields, all departments | Auditor sign-off & feedback only | Root cause, action plan, target / completed date, evidence, status, HOD remarks | View-only, one or all departments of their college |
+| KRGI Dashboard, Result Comparison | ✓ | – | – | ✓ (their college only) |
+| AI Assistant | ✓ | Allocated departments | Own department | Departments of their college |
+| Auditor Allocation & Admin, Audit Questions, Django Admin (when enabled) | ✓ | – | – | – |
+| Other users' login credentials | ✓ | – | – | – |
+
+**Coll Head logins** (one per college, username `head.<college>`, e.g. `head.krct`): the Admin sets the name and email in **Auditor Allocation → Auditor Pool & Auto-Logins → College Head logins**, then uses *Show once* (or *Reset*) to get the first password. Columns hidden in *Audit Questions* are hidden for Coll Heads too.
 
 Role checks live in `backend/audit_core/permissions.py`. Anonymous API calls get `401`; calls outside the user's role or departments get `403`.
 

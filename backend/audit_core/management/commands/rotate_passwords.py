@@ -12,8 +12,9 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from audit_core.auth_utils import create_or_update_auditor_user, create_or_update_hod_user, set_must_change
-from audit_core.models import Auditor, Department
+from audit_core.auth_utils import (create_or_update_auditor_user, create_or_update_college_head_user,
+                                   create_or_update_hod_user, set_must_change)
+from audit_core.models import Auditor, Department, Institute
 
 
 class Command(BaseCommand):
@@ -29,7 +30,10 @@ class Command(BaseCommand):
         if not opts['yes']:
             raise CommandError('This replaces every auditor and HOD password. Run again with --yes to confirm.')
 
-        hods, auditors = [], []
+        hods, auditors, heads = [], [], []
+        for inst in Institute.objects.order_by('code'):
+            username, pwd = create_or_update_college_head_user(inst, reset=True, keep_pending=False)
+            heads.append((inst.code, inst.head_name or '', username, inst.head_email or f'{username}@{inst.code.lower()}.ac.in', pwd))
         for d in Department.objects.select_related('institute').order_by('institute__code', 'code'):
             username, pwd = create_or_update_hod_user(d, reset=True)
             hods.append((d.institute.code, d.code, d.hod_name or '', username, d.hod_email or '', pwd))
@@ -53,6 +57,12 @@ class Command(BaseCommand):
             "line only with that person. This file is git-ignored; never commit or email it as a whole.",
             'Every user must choose a new password at first login; these passwords then stop working.',
             '',
+            '## College Heads (Coll Head)',
+            '',
+            '| College | Name | Username | Email (also accepted) | Password |',
+            '|---|---|---|---|---|',
+            *[f"| {' | '.join(esc(v) for v in row)} |" for row in heads],
+            '',
             '## Heads of Department',
             '',
             '| College | Dept | HOD | Username | Email (also accepted) | Password |',
@@ -73,5 +83,6 @@ class Command(BaseCommand):
         out = Path(opts['output'])
         out.write_text('\n'.join(lines), encoding='utf-8')
         self.stdout.write(self.style.SUCCESS(
-            f'New passwords: {len(hods)} HODs, {len(auditors)} auditors. Admins required to change: {admins}. '
+            f'New passwords: {len(heads)} College Heads, {len(hods)} HODs, {len(auditors)} auditors. '
+            f'Admins required to change: {admins}. '
             f'List written to {out}'))

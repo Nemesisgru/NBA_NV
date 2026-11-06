@@ -10,13 +10,15 @@ AUDITOR_ATR_FIELDS = {'auditor_signoff', 'auditor_feedback'}
 
 
 def user_role(user):
-    """'Admin' | 'Auditor' | 'HOD', or None for anonymous / unlinked accounts"""
+    """'Admin' | 'Auditor' | 'HOD' | 'CollegeHead', or None for anonymous / unlinked accounts"""
     if not user or not user.is_authenticated:
         return None
     if getattr(user, 'auditor_profile', None):
         return 'Auditor'
     if getattr(user, 'hod_department', None):
         return 'HOD'
+    if getattr(user, 'headed_institute', None):
+        return 'CollegeHead'
     if user.is_superuser or user.is_staff:
         return 'Admin'
     return None
@@ -37,6 +39,10 @@ def scoped_department_ids(request):
         return None
     if request.role == 'HOD':
         return {request.user.hod_department.id}
+    if request.role == 'CollegeHead':
+        # Every department of their own college (read-only)
+        from .models import Department
+        return set(Department.objects.filter(institute=request.user.headed_institute).values_list('id', flat=True))
     return set(auditor_assignments(request.user.auditor_profile).values_list('department_id', flat=True))
 
 

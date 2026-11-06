@@ -16,7 +16,9 @@ import { Loader2 } from 'lucide-react';
 const ROLE_TABS = {
   Admin: ['criteria', 'summary', 'dashboard', 'atr', 'allocations', 'questions', 'comparison', 'assistant'],
   Auditor: ['criteria', 'summary', 'atr', 'assistant'],
-  HOD: ['criteria', 'summary', 'atr', 'assistant']
+  HOD: ['criteria', 'summary', 'atr', 'assistant'],
+  // College Head ("Coll Head"): every department of their college, view-only; no allocation or audit questions
+  CollegeHead: ['criteria', 'summary', 'dashboard', 'atr', 'comparison', 'assistant']
 };
 
 export default function App() {
@@ -56,6 +58,8 @@ export default function App() {
 
       if (user.role === 'HOD' && user.hod_info) {
         dept = data.departments.find(d => d.id === user.hod_info.department_id) || dept;
+      } else if (user.role === 'CollegeHead' && user.college_head_info) {
+        dept = data.departments.find(d => d.institute_code === user.college_head_info.institute_code) || dept;
       } else if (user.role === 'Auditor') {
         // Start on the most recent cycle the auditor has an allocation in
         const assignments = [...(user.auditor_info?.assignments || [])].sort((a, b) => b.cycle_id - a.cycle_id);
@@ -240,7 +244,7 @@ export default function App() {
       )}
 
       {/* Role / Logged in contextual alert bar (HOD and Auditor only) */}
-      {(userRole === 'HOD' || userRole === 'Auditor') && (
+      {(userRole === 'HOD' || userRole === 'Auditor' || userRole === 'CollegeHead') && (
         <div style={{
           background: 'var(--nav-join-bg)',
           borderBottom: '1px solid var(--border-subtle)',
@@ -252,7 +256,11 @@ export default function App() {
           color: 'var(--text-primary)'
         }}>
           <div>
-            {currentUser.role === 'HOD' ? (
+            {currentUser.role === 'CollegeHead' ? (
+              <span>
+                🎓 Logged in as <strong>Coll Head ({currentUser.college_head_info?.institute_code}{currentUser.college_head_info?.name ? ` - ${currentUser.college_head_info.name}` : ''})</strong>. You can view the audits of every department of your college and compare them; all pages are view-only.
+              </span>
+            ) : currentUser.role === 'HOD' ? (
               <span>
                 🏛️ Logged in as <strong>Head of Department ({currentUser.hod_info?.institute_code} - {currentUser.hod_info?.department_code})</strong>. The auditor's report is view-only; enter your root cause and action plan in the Action Taken Report.
               </span>

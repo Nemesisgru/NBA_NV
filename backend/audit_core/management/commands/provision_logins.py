@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
-from audit_core.models import Auditor, Department
-from audit_core.auth_utils import create_or_update_auditor_user, create_or_update_hod_user
+from audit_core.models import Auditor, Department, Institute
+from audit_core.auth_utils import create_or_update_auditor_user, create_or_update_hod_user, create_or_update_college_head_user
 
 class Command(BaseCommand):
     help = 'Provision automatic logins and passwords for all Auditors and HODs'
@@ -19,3 +19,10 @@ class Command(BaseCommand):
             u, p = create_or_update_hod_user(d)
             count_h += 1
         self.stdout.write(self.style.SUCCESS(f"Provisioned {count_h} HOD user accounts with passwords."))
+
+        # College Head ("Coll Head") login per college; the Admin shows each new password once in the app
+        count_c = 0
+        for inst in Institute.objects.all():
+            create_or_update_college_head_user(inst)
+            count_c += 1
+        self.stdout.write(self.style.SUCCESS(f"Provisioned {count_c} College Head accounts (new passwords: Show once in the app)."))

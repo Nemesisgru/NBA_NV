@@ -108,6 +108,33 @@ def password_status(stored, user):
 
 
 @role_required('Admin')
+def college_head_save_view(request):
+    """Admin: set a college's head name / email and create the College Head login if it does not exist"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    data = json_body(request)
+    inst = Institute.objects.filter(id=data.get('institute_id')).first() if str(data.get('institute_id', '')).isdigit() else None
+    if not inst:
+        return JsonResponse({'error': 'College not found'}, status=404)
+    inst.head_name = str(data.get('head_name') or '').strip()[:150]
+    email = str(data.get('head_email') or '').strip()[:254]
+    if email:
+        try:
+            from django.core.validators import validate_email
+            validate_email(email)
+        except ValidationError:
+            return JsonResponse({'error': 'Enter a valid email address'}, status=400)
+    inst.head_email = email
+    inst.save(update_fields=['head_name', 'head_email'])
+    from .auth_utils import create_or_update_college_head_user
+    username, _ = create_or_update_college_head_user(inst)
+    inst.refresh_from_db()
+    return JsonResponse({'status': 'success', 'institute': {
+        'id': inst.id, 'code': inst.code, 'name': inst.name, 'head_name': inst.head_name, 'head_email': inst.head_email,
+        'head_username': username, 'head_password_status': password_status(inst.head_initial_password, inst.head_user)}})
+
+
+@role_required('Admin')
 def account_password_view(request):
     """Admin: show a pending initial password once ('reveal'), or issue a new one ('reset').
     The password is returned in this response only and is never kept in readable form afterwards."""
@@ -125,6 +152,9 @@ def account_password_view(request):
     elif kind == 'hod':
         obj = Department.objects.select_related('hod_user').filter(id=obj_id).first()
         user, field = (obj.hod_user if obj else None), 'hod_initial_password'
+    elif kind == 'college_head':
+        obj = Institute.objects.select_related('head_user').filter(id=obj_id).first()
+        user, field = (obj.head_user if obj else None), 'head_initial_password'
     else:
         return JsonResponse({'error': 'Invalid account type'}, status=400)
     if not obj or not user:
@@ -189,6 +219,7 @@ def user_payload(user):
     role = user_role(user)
     auditor_info = None
     hod_info = None
+    college_head_info = None
 
     if role == 'Auditor':
         auditor = user.auditor_profile
@@ -212,6 +243,15 @@ def user_payload(user):
             'assignments': assigned_list
         }
 
+    elif role == 'CollegeHead':
+        inst = user.headed_institute
+        college_head_info = {
+            'institute_id': inst.id,
+            'institute_code': inst.code,
+            'institute_name': inst.name,
+            'name': inst.head_name,
+        }
+
     elif role == 'HOD':
         dept = user.hod_department
         hod_info = {
@@ -230,6 +270,7 @@ def user_payload(user):
         'role': role,
         'auditor_info': auditor_info,
         'hod_info': hod_info,
+        'college_head_info': college_head_info,
         'must_change_password': must_change_password(user)
     }
 
@@ -260,7 +301,17 @@ def bootstrap_data(request):
         })
 
     visible_institutes = {d['institute_code'] for d in departments}
-    institutes = [i for i in Institute.objects.values('id', 'code', 'name') if is_admin or i['code'] in visible_institutes]
+    institutes = []
+    for i in Institute.objects.select_related('head_user').order_by('code'):
+        if not (is_admin or i.code in visible_institutes):
+            continue
+        row = {'id': i.id, 'code': i.code, 'name': i.name}
+        if is_admin:
+            # College Head ("Coll Head") login of each college; the password is never sent in bulk
+            row.update({'head_name': i.head_name, 'head_email': i.head_email,
+                        'head_username': i.head_user.username if i.head_user else '',
+                        'head_password_status': password_status(i.head_initial_password, i.head_user)})
+        institutes.append(row)
 
     cycles = []
     for cy in AuditCycle.objects.all():
@@ -646,9 +697,9 @@ def criterion_summary(request):
         }, hidden)
     })
 
-@role_required('Admin')
+@role_required('Admin', 'CollegeHead')
 def dashboard_overview(request):
-    """Cross-department & cross-institute overview matching Excel 'KRGI Dashboard'"""
+    """Cross-department & cross-institute overview matching Excel 'KRGI Dashboard' (a College Head: own college)"""
     cycle_id = request.GET.get('cycle_id')
     cycle = AuditCycle.objects.filter(id=cycle_id).first() if cycle_id else AuditCycle.objects.filter(is_active=True).first()
     if not cycle:
@@ -656,6 +707,8 @@ def dashboard_overview(request):
 
     settings = get_settings()
     institutes = Institute.objects.all()
+    if request.role == 'CollegeHead':
+        institutes = institutes.filter(id=request.user.headed_institute.id)
 
     institute_cards = []
     department_matrix = []
@@ -717,6 +770,24 @@ def dashboard_overview(request):
             'grade': inst_grade
         })
 
+    hidden = hidden_output_keys(cycle, request.role)
+    for card in institute_cards:
+        if 'percentage' in hidden:
+            card['average_pct'] = None
+        if 'grade' in hidden:
+            card['grade'] = None
+    for row in department_matrix:
+        if 'percentage' in hidden:
+            row['overall_pct'] = None
+        if 'grade' in hidden:
+            row['overall_grade'] = None
+            row['y_count'] = row['c_count'] = row['w_count'] = row['d_count'] = None
+        for c in row['criteria'].values():
+            if 'percentage' in hidden:
+                c['pct'] = None
+            if 'grade' in hidden:
+                c['grade'] = None
+
     return JsonResponse({
         'cycle': {
             'id': cycle.id if cycle else None,
@@ -724,18 +795,23 @@ def dashboard_overview(request):
         },
         'criteria': criteria_list,
         'institutes': institute_cards,
-        'department_matrix': department_matrix
+        'department_matrix': department_matrix,
+        'hidden_keys': sorted(hidden),
     })
 
-@role_required('Admin')
+@role_required('Admin', 'CollegeHead')
 def comparison_view(request):
-    """Multi-department comparison analytics"""
+    """Multi-department comparison analytics (a College Head: departments of their own college only)"""
     dept_ids = request.GET.getlist('department_ids')
     cycle_id = request.GET.get('cycle_id')
     settings = get_settings()
 
+    allowed = scoped_department_ids(request)
     if not dept_ids:
-        dept_ids = list(Department.objects.values_list('id', flat=True)[:3])
+        pool = Department.objects.all() if allowed is None else Department.objects.filter(id__in=allowed)
+        dept_ids = list(pool.values_list('id', flat=True)[:3])
+    if allowed is not None and not all(can_view_department(request, d) for d in dept_ids):
+        return forbidden()
 
     departments = Department.objects.filter(id__in=dept_ids).select_related('institute')
     criteria = Criterion.objects.order_by('order').all()
@@ -773,10 +849,21 @@ def comparison_view(request):
             }
         })
 
+    # Columns the Admin hid for this audit are withheld from every login except the Admin
+    hidden = hidden_output_keys(AuditCycle.objects.filter(id=cycle_id).first(), request.role)
+    for row in comparison_data:
+        if 'percentage' in hidden:
+            row['overall_pct'] = None
+            row['scores'] = [None] * len(row['scores'])
+        if 'grade' in hidden:
+            row['overall_grade'] = None
+            row['grade_counts'] = {g: None for g in row['grade_counts']}
+
     return JsonResponse({
         'radar_labels': radar_labels,
         'criteria': [{'code': c.code, 'title': c.title} for c in criteria],
-        'departments': comparison_data
+        'departments': comparison_data,
+        'hidden_keys': sorted(hidden),
     })
 
 @role_required()
@@ -879,7 +966,9 @@ def update_atr(request):
     if not can_view_department(request, atr.evaluation.department_id):
         return forbidden()
 
-    # Drop fields this role is not allowed to change
+    # Drop fields this role is not allowed to change; College Heads only view ATRs
+    if request.role not in ('Admin', 'HOD', 'Auditor'):
+        return forbidden('Your role can view Action Taken Reports but not change them')
     if request.role == 'HOD':
         data = {k: v for k, v in data.items() if k in HOD_ATR_FIELDS}
     elif request.role == 'Auditor':

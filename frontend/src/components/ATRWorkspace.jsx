@@ -13,7 +13,8 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
   const [scope, setScope] = useState('department'); // 'department' | 'all'
   const [instituteFilter, setInstituteFilter] = useState('ALL');
   const [criterionFilter, setCriterionFilter] = useState('ALL');
-  const showAll = userRole === 'Admin' && scope === 'all';
+  // Admin: all departments; College Head: all departments of their college (the server limits the list)
+  const showAll = (userRole === 'Admin' || userRole === 'CollegeHead') && scope === 'all';
   // HOD writes the corrective action; auditor only verifies and signs off (backend enforces the same split)
   const canEditAction = userRole === 'Admin' || userRole === 'HOD';
   const canSignOff = userRole === 'Admin' || userRole === 'Auditor';
@@ -183,7 +184,7 @@ export default function ATRWorkspace({ institutes, criteriaList, departmentInfo,
         boxShadow: 'var(--shadow-card)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-        {userRole === 'Admin' && (
+        {(userRole === 'Admin' || userRole === 'CollegeHead') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--chip-label)', fontWeight: 600 }}>Scope:</span>
             {[

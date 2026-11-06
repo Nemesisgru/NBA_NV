@@ -4,6 +4,11 @@ from django.contrib.auth.models import User
 class Institute(models.Model):
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=200)
+    # College Head ("Coll Head"): read-only view of every department of this college
+    head_name = models.CharField(max_length=150, blank=True)
+    head_email = models.EmailField(blank=True)
+    head_user = models.OneToOneField(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='headed_institute')
+    head_initial_password = models.CharField(max_length=100, blank=True)  # pending, shown to the Admin once
 
     def __str__(self):
         return f"{self.code} - {self.name}"

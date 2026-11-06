@@ -40,6 +40,7 @@ urlpatterns = [
     path('auth/logout/', views.auth_logout_view, name='auth_logout_view'),
     path('auth/change-password/', views.auth_change_password_view, name='auth_change_password'),
     path('accounts/password/', views.account_password_view, name='account_password'),
+    path('college-heads/save/', views.college_head_save_view, name='college_head_save'),
     path('export/department-excel/', views.export_department_excel, name='export_department_excel'),
     path('export/department-pdf/', views.export_department_pdf, name='export_department_pdf'),
 ]

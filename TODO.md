@@ -2,7 +2,7 @@
 
 Settings referred to below are in `backend/deploy.env.example`. Status checked on 06-Nov-2026.
 
-## A. Required before the site goes live
+## A. Required before the site goes liveṁ
 
 - [x] **New passwords for everyone.** Done with `python manage.py rotate_passwords --yes`: all 36 HODs and
   48 auditors have new random passwords, listed in `login.md` (git-ignored, confidential: share each line

@@ -80,6 +80,29 @@ def create_or_update_auditor_user(auditor, password=None, reset=False):
     set_must_change(user, True)
     return username, pwd
 
+def create_or_update_college_head_user(institute, password=None, reset=False, keep_pending=True):
+    """Login of the College Head ("Coll Head") of an institute: username head.<college>.
+    With keep_pending the new password is kept until the Admin has shown it once."""
+    code = institute.code.lower()
+    username = f"head.{code}"
+    email = institute.head_email or f"head.{code}@{code}.ac.in"
+    if institute.head_user and password is None and not reset:
+        user = institute.head_user
+        user.username, user.email = username, email
+        user.save()
+        return username, None
+    pwd = password or generate_password()
+    user = institute.head_user or User.objects.filter(username=username).first() or User(username=username)
+    user.username, user.email = username, email
+    user.set_password(pwd)
+    user.save()
+    institute.head_user = user
+    institute.head_initial_password = pwd if keep_pending else ''
+    institute.save(update_fields=['head_user', 'head_initial_password'])
+    set_must_change(user, True)
+    return username, pwd
+
+
 def create_or_update_hod_user(department, password=None, reset=False):
     inst = department.institute.code.lower()
     dept_code = department.code.lower().replace('&', '').replace(' ', '').replace('(', '').replace(')', '')

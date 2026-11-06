@@ -1,40 +1,13 @@
 import React, { useState } from 'react';
-import { ShieldCheck, LogIn, Loader2, Crown, Search, Building2, Eye, EyeOff, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, LogIn, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
-const ROLES = [
-  {
-    id: 'admin',
-    icon: Crown,
-    color: '#818cf8',
-    title: 'Administrator / IQAC',
-    text: 'Full access: all institutes and departments, auditor allocation, dashboard and result comparison.',
-    hint: 'admin'
-  },
-  {
-    id: 'auditor',
-    icon: Search,
-    color: '#38bdf8',
-    title: 'Academic Auditor',
-    text: 'Evaluates only the departments and criteria allocated by the Admin, and signs off ATRs.',
-    hint: 'auditor.<name>'
-  },
-  {
-    id: 'hod',
-    icon: Building2,
-    color: '#f59e0b',
-    title: 'Head of Department',
-    text: "Views the auditor's report for their own department and enters the Action Taken Report.",
-    hint: 'hod.<dept>@<college>.ac.in'
-  }
-];
 
 export default function LoginPage({ onLogin }) {
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [selectedRoleHint, setSelectedRoleHint] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,14 +32,6 @@ export default function LoginPage({ onLogin }) {
     }
   };
 
-  const handleRoleQuickSelect = (role) => {
-    setSelectedRoleHint(role.id);
-    setForm(prev => ({
-      ...prev,
-      // Formats such as auditor.<name> are only shown, not filled in; passwords are never shown
-      username: role.hint.includes('<') ? prev.username : role.hint
-    }));
-  };
 
   const labelStyle = {
     fontSize: '0.78rem',
@@ -157,7 +122,7 @@ export default function LoginPage({ onLogin }) {
             alignItems: 'center'
           }}
         >
-          {/* Brand & role overview */}
+          {/* Brand */}
           <section>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
               <div
@@ -217,69 +182,6 @@ export default function LoginPage({ onLogin }) {
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Select role to prefill credentials:
-              </div>
-
-              {ROLES.map((r) => {
-                const Icon = r.icon;
-                const isSelected = selectedRoleHint === r.id;
-                return (
-                  <div
-                    key={r.title}
-                    onClick={() => handleRoleQuickSelect(r)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleRoleQuickSelect(r);
-                      }
-                    }}
-                    style={{
-                      display: 'flex',
-                      gap: '12px',
-                      background: isSelected ? 'var(--primary-light)' : 'var(--role-card-bg)',
-                      border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--role-card-border)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '12px 14px',
-                      boxShadow: 'var(--shadow-card)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      outline: 'none'
-                    }}
-                    title={`Click to fill ${r.title} credentials`}
-                  >
-                    <Icon size={20} color={r.color} style={{ flexShrink: 0, marginTop: '2px' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                          {r.title}
-                        </span>
-                        {isSelected && <CheckCircle2 size={15} color="var(--primary)" />}
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.4 }}>
-                        {r.text}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <code
-                          style={{
-                            fontSize: '0.7rem',
-                            color: r.color,
-                            background: 'var(--primary-light)',
-                            padding: '2px 6px',
-                            borderRadius: '4px'
-                          }}
-                        >
-                          User: {r.hint}
-                        </code>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </section>
 
           {/* Login form card */}
@@ -302,7 +204,7 @@ export default function LoginPage({ onLogin }) {
             </div>
 
             <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '22px' }}>
-              Use the credentials issued by the IQAC office or click any role on the left to prefill.
+              Use the username or email and password issued by the IQAC office.
             </p>
 
             {error && (

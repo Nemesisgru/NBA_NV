@@ -406,7 +406,9 @@ export default function CriterionEvaluation({
           gap: '8px'
         }}>
           <Info size={15} color="var(--primary)" />
-          {userRole === 'HOD'
+          {userRole === 'CollegeHead'
+            ? <span>This is the auditor's report for this department of your college (view-only).</span>
+            : userRole === 'HOD'
             ? <span>This is the auditor's report for your department (view-only). Indicators below 60% appear in the <strong>Action Taken Report</strong> tab, where you enter the root cause and action plan.</span>
             : <span>View-only: {activeCriterionCode} of this department is not allocated to you for this audit cycle.</span>}
         </div>

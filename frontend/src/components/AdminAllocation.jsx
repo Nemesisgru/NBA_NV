@@ -20,6 +20,26 @@ export default function AdminAllocation({
   const [searchAuditor, setSearchAuditor] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveIsError, setSaveIsError] = useState(false);
+  // College Head logins (from bootstrap.institutes; Admin only)
+  const [heads, setHeads] = useState(institutes || []);
+  useEffect(() => { setHeads(institutes || []); }, [institutes]);
+  const saveHead = async (h) => {
+    try {
+      const res = await fetch('/api/college-heads/save/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ institute_id: h.id, head_name: h.head_name, head_email: h.head_email })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not save');
+      setHeads(prev => prev.map(x => (x.id === h.id ? { ...x, ...json.institute } : x)));
+      setSaveIsError(false);
+      setSaveStatus(`Saved Coll Head of ${h.code}`);
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Passwords shown once in this browser tab ('auditor:12' -> password); never kept by the server
   const [shownPasswords, setShownPasswords] = useState({});
   const [passwordStatus, setPasswordStatus] = useState({});
@@ -703,6 +723,46 @@ export default function AdminAllocation({
       {/* Tab 2: Auditor Pool Directory & Automatic Logins */}
       {activeTab === 'pool' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* College Head ("Coll Head") logins: one per college, view-only access to all its departments */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
+            <div style={{ padding: '10px 16px', fontWeight: 800, fontSize: '0.85rem', borderBottom: '1px solid var(--border-subtle)' }}>
+              College Head logins (Coll Head): view every department of their college, compare audits; no allocation or audit questions
+            </div>
+            <table className="audit-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '80px' }}>College</th>
+                  <th style={{ minWidth: '180px' }}>Name</th>
+                  <th style={{ minWidth: '200px' }}>Email (also accepted at login)</th>
+                  <th style={{ minWidth: '120px' }}>Username</th>
+                  <th style={{ minWidth: '200px' }}>Password (shown once)</th>
+                  <th style={{ width: '70px' }}>Save</th>
+                </tr>
+              </thead>
+              <tbody>
+                {heads.map(h => (
+                  <tr key={h.id}>
+                    <td style={{ fontWeight: 700 }}>{h.code}</td>
+                    <td><input value={h.head_name || ''} placeholder="Name of the College Head"
+                      onChange={(e) => setHeads(prev => prev.map(x => (x.id === h.id ? { ...x, head_name: e.target.value } : x)))}
+                      style={{ fontSize: '0.8rem', padding: '4px 8px' }} /></td>
+                    <td><input type="email" value={h.head_email || ''} placeholder={`head.${h.code.toLowerCase()}@${h.code.toLowerCase()}.ac.in`}
+                      onChange={(e) => setHeads(prev => prev.map(x => (x.id === h.id ? { ...x, head_email: e.target.value } : x)))}
+                      style={{ fontSize: '0.8rem', padding: '4px 8px' }} /></td>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{h.head_username || 'Created on save'}</td>
+                    <td>{h.head_username
+                      ? <PasswordCell kind="college_head" id={h.id} status={h.head_password_status} label={`Coll Head ${h.code}`} />
+                      : <span style={{ color: 'var(--text-muted)' }}>-</span>}</td>
+                    <td>
+                      <button className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} onClick={() => saveHead(h)} title="Save name / email (creates the login if needed)">
+                        <Save size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ position: 'relative', width: '280px' }}>
               <Search size={14} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />

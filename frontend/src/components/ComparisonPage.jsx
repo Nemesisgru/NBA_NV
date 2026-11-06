@@ -209,13 +209,13 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                   {d.label}
                 </span>
                 <span className={`badge badge-${(d.overall_grade || 'd').toLowerCase()}`}>
-                  {d.overall_grade}
+                  {d.overall_grade ?? 'Hidden'}
                 </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', margin: '10px 0' }}>
                 <span style={{ fontSize: n > 5 ? '1.6rem' : '2rem', fontWeight: 800, color: color }}>
-                  {d.overall_pct}%
+                  {d.overall_pct === null ? 'Hidden' : `${d.overall_pct}%`}
                 </span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overall Score</span>
               </div>
@@ -234,19 +234,19 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                 marginTop: '12px'
               }}>
                 <div>
-                  <div style={{ color: 'var(--grade-y)', fontWeight: 800 }}>{d.grade_counts.Y}</div>
+                  <div style={{ color: 'var(--grade-y)', fontWeight: 800 }}>{d.grade_counts.Y ?? '-'}</div>
                   <div style={{ color: 'var(--text-muted)' }}>Y</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--grade-c)', fontWeight: 800 }}>{d.grade_counts.C}</div>
+                  <div style={{ color: 'var(--grade-c)', fontWeight: 800 }}>{d.grade_counts.C ?? '-'}</div>
                   <div style={{ color: 'var(--text-muted)' }}>C</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--grade-w)', fontWeight: 800 }}>{d.grade_counts.W}</div>
+                  <div style={{ color: 'var(--grade-w)', fontWeight: 800 }}>{d.grade_counts.W ?? '-'}</div>
                   <div style={{ color: 'var(--text-muted)' }}>W</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--grade-d)', fontWeight: 800 }}>{d.grade_counts.D}</div>
+                  <div style={{ color: 'var(--grade-d)', fontWeight: 800 }}>{d.grade_counts.D ?? '-'}</div>
                   <div style={{ color: 'var(--text-muted)' }}>D</div>
                 </div>
               </div>
@@ -291,13 +291,14 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
               <div key={c.code} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
                 <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: n > 5 ? '2px' : '4px', height: '200px' }}>
                   {comparedDepts.map(d => {
-                    const score = d.scores[cIdx] || 0;
-                    const heightPct = Math.min(score, 100);
+                    const raw = d.scores[cIdx];
+                    const score = raw || 0;
+                    const heightPct = raw === null ? 0 : Math.min(score, 100);
                     const color = colorOf(d.department_id);
                     return (
                       <div
                         key={d.department_id}
-                        title={`${d.label} - ${c.code}: ${score}%`}
+                        title={`${d.label} - ${c.code}: ${raw === null ? 'hidden' : `${score}%`}`}
                         style={{
                           width: `${Math.floor(80 / comparedDepts.length)}%`,
                           height: `${heightPct}%`,
@@ -353,7 +354,11 @@ export default function ComparisonPage({ departments, selectedCycleId, criteriaL
                   <td style={{ fontWeight: 800, color: 'var(--primary)' }}>{c.code}</td>
                   <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.title}</td>
                   {comparedDepts.map(d => {
-                    const score = d.scores[cIdx] || 0;
+                    const raw = d.scores[cIdx];
+                    if (raw === null) {
+                      return <td key={d.department_id} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Hidden</td>;
+                    }
+                    const score = raw || 0;
                     const grade = gradeFor(score, gradingSettings);
                     return (
                       <td key={d.department_id} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>

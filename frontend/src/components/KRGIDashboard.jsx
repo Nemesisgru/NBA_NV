@@ -101,7 +101,7 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
                 </h3>
               </div>
               <span className={`badge badge-${(inst.grade || 'd').toLowerCase()}`} style={{ fontSize: '0.9rem', padding: '3px 12px' }}>
-                {inst.grade}
+                {inst.grade ?? 'Hidden'}
               </span>
             </div>
 
@@ -119,7 +119,7 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Average Score</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>
-                  {inst.average_pct}%
+                  {inst.average_pct === null ? 'Hidden' : `${inst.average_pct}%`}
                 </div>
               </div>
             </div>
@@ -172,12 +172,12 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
                   <td style={{ fontWeight: 800, color: '#f8fafc' }}>{dept.department_code}</td>
                   <td style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>{dept.department_name}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: dept.has_data ? '#10b981' : '#64748b' }}>
-                    {dept.has_data ? `${dept.overall_pct}%` : 'Pending'}
+                    {!dept.has_data ? 'Pending' : (dept.overall_pct === null ? 'Hidden' : `${dept.overall_pct}%`)}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {dept.has_data ? (
                       <span className={`badge badge-${(dept.overall_grade || 'd').toLowerCase()}`}>
-                        {dept.overall_grade}
+                        {dept.overall_grade ?? 'Hidden'}
                       </span>
                     ) : (
                       <span style={{ color: '#64748b' }}>-</span>
@@ -206,7 +206,7 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
 
                   {/* Distribution */}
                   <td style={{ textAlign: 'center', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                    {dept.has_data ? (
+                    {dept.has_data && dept.y_count === null ? 'Hidden' : dept.has_data ? (
                       <span>
                         <strong style={{ color: '#10b981' }}>{dept.y_count}</strong> /{' '}
                         <strong style={{ color: '#3b82f6' }}>{dept.c_count}</strong> /{' '}

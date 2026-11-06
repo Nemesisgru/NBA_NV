@@ -26,11 +26,13 @@ export default function Navbar({
   const filteredDepartments = departments.filter(
     d => !selectedInstitute || d.institute_code === selectedInstitute
   );
-  // An HOD is locked to their own department
+  // An HOD is locked to their own department; a College Head to their own college
   const isHod = userRole === 'HOD';
+  const isCollegeHead = userRole === 'CollegeHead';
+  const roleLabel = { CollegeHead: 'Coll Head' }[userRole] || userRole;
 
   const tabs = [
-    { id: 'criteria', label: isHod ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)' },
+    { id: 'criteria', label: (isHod || isCollegeHead) ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)' },
     { id: 'summary', label: 'Criterion Summary (1000M)' },
     { id: 'dashboard', label: 'KRGI Dashboard' },
     { id: 'atr', label: 'Action Taken Report (ATR)' },
@@ -134,7 +136,7 @@ export default function Navbar({
             }}>
               <div style={{ fontSize: '0.75rem' }}>
                 <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{currentUser.username}</span>
-                <span style={{ color: 'var(--text-secondary)' }}> ({currentUser.role})</span>
+                <span style={{ color: 'var(--text-secondary)' }}> ({roleLabel})</span>
               </div>
               <button
                 onClick={onChangePassword}
@@ -184,7 +186,7 @@ export default function Navbar({
                 const firstInInst = departments.find(d => d.institute_code === e.target.value);
                 if (firstInInst) setSelectedDepartment(firstInInst.id);
               }}
-              disabled={isHod}
+              disabled={isHod || isCollegeHead}
               style={{ width: '105px', padding: '6px 8px', fontSize: '0.8rem' }}
             >
               {institutes.map(inst => (
