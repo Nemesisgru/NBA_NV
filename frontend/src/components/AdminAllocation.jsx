@@ -528,17 +528,7 @@ export default function AdminAllocation({
                   return (
                     <tr key={row.department_id}>
                       <td style={{ fontWeight: 700, color: '#818cf8' }}>{row.institute_code}</td>
-                      <td style={{ fontWeight: 800, color: '#f8fafc' }}>
-                        {row.department_code}
-                        {(() => {
-                          const d = departments.find(x => x.id === row.department_id);
-                          return d?.hod_username ? (
-                            <div style={{ fontSize: '0.68rem', fontWeight: 500, marginTop: '4px' }} title={`HOD login: ${d.hod_username}`}>
-                              <PasswordCell kind="hod" id={d.id} status={d.hod_password_status} label={`HOD ${row.institute_code} - ${row.department_code}`} />
-                            </div>
-                          ) : null;
-                        })()}
-                      </td>
+                      <td style={{ fontWeight: 800, color: '#f8fafc' }}>{row.department_code}</td>
 
                       {/* Auditor 1 Column with Individual Criteria Chips */}
                       <td style={{ background: 'rgba(99, 102, 241, 0.03)' }}>
@@ -762,6 +752,41 @@ export default function AdminAllocation({
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* HOD logins: one per department */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
+            <div style={{ padding: '10px 16px', fontWeight: 800, fontSize: '0.85rem', borderBottom: '1px solid var(--border-subtle)' }}>
+              HOD logins ({departments.length} departments)
+            </div>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              <table className="audit-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '80px' }}>College</th>
+                    <th style={{ width: '110px' }}>Dept</th>
+                    <th style={{ minWidth: '180px' }}>HOD</th>
+                    <th style={{ minWidth: '160px' }}>Username</th>
+                    <th style={{ minWidth: '200px' }}>Email (also accepted at login)</th>
+                    <th style={{ minWidth: '220px' }}>Password (shown once)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departments.filter(d => !searchAuditor || `${d.institute_code} ${d.code} ${d.hod_name} ${d.hod_username}`.toLowerCase().includes(searchAuditor.toLowerCase())).map(d => (
+                    <tr key={d.id}>
+                      <td style={{ fontWeight: 700 }}>{d.institute_code}</td>
+                      <td style={{ fontWeight: 700 }}>{d.code}</td>
+                      <td>{d.hod_name || '-'}</td>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{d.hod_username || '-'}</td>
+                      <td style={{ fontSize: '0.8rem' }}>{d.hod_email || '-'}</td>
+                      <td>{d.hod_username
+                        ? <PasswordCell kind="hod" id={d.id} status={d.hod_password_status} label={`HOD ${d.institute_code} - ${d.code}`} />
+                        : <span style={{ color: 'var(--text-muted)' }}>No login</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ position: 'relative', width: '280px' }}>
