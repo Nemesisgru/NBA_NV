@@ -1,4 +1,5 @@
 import json
+import secrets
 from html import escape as html_escape
 from django.conf import settings
 import csv
@@ -1482,6 +1483,7 @@ def export_department_pdf(request):
     # Everything inserted into the page is HTML-escaped (users type remarks, root causes and plans);
     # columns the Admin hid for this audit are shown as "Hidden" to HODs / Auditors
     hidden = hidden_output_keys(cycle, request.role)
+    nonce = secrets.token_urlsafe(16)  # the only script allowed on this page is the Print button
     e = lambda v: html_escape('' if v is None else str(v))  # noqa: E731
 
     def show(key, value, suffix=''):
@@ -1527,7 +1529,7 @@ def export_department_pdf(request):
 </head>
 <body>
     <div class="no-print" style="margin-bottom: 20px; text-align: right;">
-        <button onclick="window.print()" style="background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+        <button id="print-report" type="button" style="background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">
             🖨️ Print / Save as PDF
         </button>
     </div>
@@ -1646,7 +1648,12 @@ def export_department_pdf(request):
             Director / IQAC Coordinator<br>(K. Ramakrishnan Group)
         </div>
     </div>
+    <script nonce="{nonce}">document.getElementById('print-report').addEventListener('click', function () {{ window.print(); }});</script>
 </body>
 </html>"""
 
-    return HttpResponse(html)
+    response = HttpResponse(html)
+    response['Content-Security-Policy'] = (
+        f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+    return response

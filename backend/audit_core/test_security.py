@@ -153,3 +153,16 @@ class NeutralEvidenceDefaultTests(AIAssistantBase):
         ev = AuditEvaluation.objects.get(department=self.a2, cycle=self.cur, metric=self.m['1.1.a'])
         self.assertEqual(ev.physical_check_result, 'Not checked')
         self.assertEqual(ev.evidence_status, 'Not Uploaded')
+
+
+class HeaderTests(AIAssistantBase):
+    def test_csp_on_pages_and_nonce_on_printable_report(self):
+        r = self.client.get('/api/auth/me/')
+        self.assertIn("script-src 'self'", r['Content-Security-Policy'])
+        self.login(self.admin)
+        r = self.client.get(f'/api/export/department-pdf/?department_id={self.a1.id}&cycle_id={self.cur.id}')
+        csp = r['Content-Security-Policy']
+        nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
+        body = r.content.decode('utf-8')
+        self.assertIn(f'<script nonce="{nonce}">', body)
+        self.assertNotIn('onclick=', body)

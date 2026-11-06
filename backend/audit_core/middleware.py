@@ -56,3 +56,18 @@ def json_body(request):
     if not isinstance(data, dict):
         raise BadRequest('Expected a JSON object')
     return data
+
+
+class ContentSecurityPolicyMiddleware:
+    """Adds the site's Content-Security-Policy unless the view set its own (e.g. the printable report).
+    Django Admin is left out: it is off by default and limited to the office address when on."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.admin_prefix = '/' + settings.AUDIT_ADMIN_PATH
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if 'Content-Security-Policy' not in response and not request.path.startswith(self.admin_prefix):
+            response['Content-Security-Policy'] = settings.AUDIT_CSP
+        return response

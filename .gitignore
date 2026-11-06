@@ -16,3 +16,10 @@ backend/db.sqlite3-*
 backend/.secret_key
 *.env
 !*.env.example
+
+# Server logs and collected static files
+backend/logs/
+backend/staticfiles/
+
+# Portable tools (Node.js) and Python bytecode do not belong in git
+tools/

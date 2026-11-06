@@ -28,8 +28,8 @@ Skip this if the project already runs on this computer.
    python --version
    node --version
    ```
-   If `node` is not found, use the portable copy in the project for that terminal:
-   `$env:PATH = "E:\NBA_NV\tools\nodejs;" + $env:PATH`
+   If `node` is not found, install Node.js from https://nodejs.org. On the original development computer a
+   portable copy also exists (not in git): `$env:PATH = "E:\NBA_NV\tools\nodejs;" + $env:PATH`
 2. Install the backend packages and update the database:
    ```powershell
    cd E:\NBA_NV\backend
