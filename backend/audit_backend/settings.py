@@ -103,7 +103,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Serves the built frontend (frontend/dist) and admin static files efficiently in production
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'audit_core.middleware.AdminAccessMiddleware',
+    'audit_core.middleware.ContentSecurityPolicyMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -194,7 +197,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Indian Standard Time: ATR target / overdue dates and report timestamps use local time
+TIME_ZONE = os.environ.get('AUDIT_TIME_ZONE', 'Asia/Kolkata')
 
 USE_I18N = True
 
@@ -205,6 +209,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# python manage.py collectstatic copies Django Admin's files here (served by WhiteNoise)
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+# The built React app: /assets/..., /theme-init.js etc. are served straight from frontend/dist
+WHITENOISE_ROOT = BASE_DIR.parent / 'frontend' / 'dist'
+WHITENOISE_MAX_AGE = 3600
+
+# Content-Security-Policy for every page (the browser only loads scripts from this site)
+AUDIT_CSP = (
+    "default-src 'self'; script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; "
+    "form-action 'self'; frame-ancestors 'none'"
+)
 
 # Existing tables were created with BigAutoField ids; stating it keeps new migrations from altering them
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -247,10 +264,25 @@ AUDIT_EVIDENCE = {
 DATA_UPLOAD_MAX_MEMORY_SIZE = 2_621_440
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2_621_440
 
+# Server log: console, plus a rotating file (AUDIT_LOG_DIR, default backend/logs; git-ignored).
+# Unexpected errors (django.request), failed logins (audit_core.security: username and address, never the
+# password) and AI operations (names, timings, outcomes; never prompts, audit content or model output).
+AUDIT_LOG_DIR = Path(os.environ.get('AUDIT_LOG_DIR', BASE_DIR / 'logs'))
+AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'handlers': {'console': {'class': 'logging.StreamHandler'}},
-    # Operation names, timings and outcomes only; never prompts, audit content or model output
-    'loggers': {'audit_core.ai': {'handlers': ['console'], 'level': 'INFO'}},
+    'formatters': {'plain': {'format': '%(asctime)s %(levelname)s %(name)s: %(message)s'}},
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler', 'formatter': 'plain',
+            'filename': str(AUDIT_LOG_DIR / 'audit.log'), 'maxBytes': 5 * 1024 * 1024, 'backupCount': 10,
+            'encoding': 'utf-8', 'delay': True,
+        },
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console', 'file'], 'level': 'ERROR', 'propagate': False},
+        'audit_core': {'handlers': ['console', 'file'], 'level': 'INFO', 'propagate': False},
+    },
 }

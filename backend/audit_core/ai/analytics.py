@@ -391,7 +391,7 @@ def get_missing_evidence(scope, criterion=None, limit=ROW_LIMIT, mandatory_only=
 # ---------------------------------------------------------------- 3. corrective actions
 def get_pending_corrective_actions(scope, criterion=None, status=None, overdue_only=False, due_before=None,
                                    limit=ROW_LIMIT, owner=None):
-    today = date.today()
+    today = timezone.localdate()  # in TIME_ZONE (India), not the server clock
     qs = ActionTakenReport.objects.filter(
         evaluation__cycle=scope.cycle, evaluation__department_id__in=scope.department_ids,
         evaluation__metric__in=cycle_metrics(scope.cycle.id),
