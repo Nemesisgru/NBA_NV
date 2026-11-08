@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { 
   CheckSquare, Square, Filter, Search, Save, AlertTriangle, 
   ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2, Paperclip, Loader2
@@ -46,6 +46,9 @@ export default function CriterionEvaluation({
   const [criterionData, setCriterionData] = useState(null);
   const [metrics, setMetrics] = useState([]);
   const [criteriaExpanded, setCriteriaExpanded] = useState(false);
+  const criterionNavRef = useRef(null);
+  const criterionItemRefs = useRef({});
+  const [criterionIndicator, setCriterionIndicator] = useState(null);
   // Set by the backend: Admin, or the auditor allocated this criterion; HODs always view-only
   const [canEdit, setCanEdit] = useState(false);
   const readOnly = !canEdit;
@@ -80,6 +83,38 @@ export default function CriterionEvaluation({
   const [col, setCol] = useState(auditColumns);
   useEffect(() => { setCol(auditColumns); }, [auditColumns, selectedCycleId]);
   const columnsChanged = !sameColumns(col, auditColumns);
+
+  useLayoutEffect(() => {
+    const nav = criterionNavRef.current;
+    if (!nav) return undefined;
+
+    const measureIndicator = () => {
+      const activeItem = criterionItemRefs.current[activeCriterionCode];
+      if (!activeItem) {
+        setCriterionIndicator(null);
+        return;
+      }
+
+      const isHorizontal = window.matchMedia('(max-width: 850px)').matches;
+      setCriterionIndicator(isHorizontal
+        ? { left: activeItem.offsetLeft, width: activeItem.offsetWidth }
+        : { top: activeItem.offsetTop, height: activeItem.offsetHeight });
+    };
+
+    measureIndicator();
+    const observer = new ResizeObserver(measureIndicator);
+    observer.observe(nav);
+    Object.values(criterionItemRefs.current).forEach(item => {
+      if (item) observer.observe(item);
+    });
+
+    const mediaQuery = window.matchMedia('(max-width: 850px)');
+    mediaQuery.addEventListener('change', measureIndicator);
+    return () => {
+      observer.disconnect();
+      mediaQuery.removeEventListener('change', measureIndicator);
+    };
+  }, [activeCriterionCode, criteriaExpanded, criteriaList.length, userRole]);
 
 
   // Fetch criterion metrics and evaluations
@@ -314,16 +349,27 @@ export default function CriterionEvaluation({
         }}
       >
         <nav
+          ref={criterionNavRef}
           id="criterion-sidebar-list"
           className="criterion-sidebar-list"
           aria-label="Audit criteria"
         >
+          {criterionIndicator && (
+            <div
+              className="criterion-sidebar-indicator"
+              aria-hidden="true"
+              style={criterionIndicator}
+            >
+              <span />
+            </div>
+          )}
           {criteriaList.map(c => {
             const isCurrent = c.code === activeCriterionCode;
             const isAllocated = !editableCriteria || editableCriteria.includes(c.code);
             return (
               <button
                 key={c.code}
+                ref={element => { criterionItemRefs.current[c.code] = element; }}
                 onClick={() => setActiveCriterionCode(c.code)}
                 className={`criterion-sidebar-item${isCurrent ? ' active' : ''}`}
                 aria-current={isCurrent ? 'page' : undefined}

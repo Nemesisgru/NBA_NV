@@ -628,6 +628,7 @@ body, header, nav, main, section, footer {
 }
 
 .criterion-sidebar-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -643,6 +644,8 @@ body, header, nav, main, section, footer {
 }
 
 .criterion-sidebar-item {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -670,10 +673,57 @@ body, header, nav, main, section, footer {
 }
 
 .criterion-sidebar-item.active {
-  background: var(--seg-active-bg);
   border-color: transparent;
-  color: var(--seg-active-text);
-  box-shadow: var(--seg-active-shadow);
+  color: var(--primary);
+}
+
+.criterion-sidebar-indicator {
+  --curve: 12px;
+  position: absolute;
+  z-index: 0;
+  left: 6px;
+  width: calc(100% - 12px);
+  border-radius: 12px;
+  background: var(--primary-light);
+  pointer-events: none;
+  transition:
+    top 0.42s cubic-bezier(0.65, 0, 0.35, 1),
+    left 0.42s cubic-bezier(0.65, 0, 0.35, 1),
+    width 0.42s cubic-bezier(0.65, 0, 0.35, 1),
+    height 0.42s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.criterion-sidebar-indicator > span {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 3px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--primary);
+  transform: translateY(-50%);
+}
+
+.criterion-sidebar-indicator::before,
+.criterion-sidebar-indicator::after {
+  position: absolute;
+  right: calc(var(--curve) * -1);
+  width: var(--curve);
+  height: var(--curve);
+  background: var(--bg-main);
+  content: '';
+}
+
+.criterion-sidebar-indicator::before {
+  top: 0;
+  -webkit-mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+  mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+}
+
+.criterion-sidebar-indicator::after {
+  bottom: 0;
+  -webkit-mask: radial-gradient(circle at 0 100%, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+  mask: radial-gradient(circle at 0 100%, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
 }
 
 .criterion-sidebar-code {
@@ -686,8 +736,8 @@ body, header, nav, main, section, footer {
 }
 
 .criterion-sidebar-item.active .criterion-sidebar-code {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 .criterion-sidebar.is-collapsed .criterion-sidebar-item {
@@ -808,6 +858,38 @@ body, header, nav, main, section, footer {
     margin-top: 8px;
     overflow: auto hidden;
     padding: 2px 2px 8px;
+  }
+
+  .criterion-sidebar-indicator {
+    top: 2px;
+    height: calc(100% - 10px);
+  }
+
+  .criterion-sidebar-indicator > span {
+    top: 4px;
+    left: 50%;
+    width: 22px;
+    height: 3px;
+    transform: translateX(-50%);
+  }
+
+  .criterion-sidebar-indicator::before,
+  .criterion-sidebar-indicator::after {
+    top: auto;
+    right: auto;
+    bottom: 0;
+  }
+
+  .criterion-sidebar-indicator::before {
+    left: calc(var(--curve) * -1);
+    -webkit-mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+    mask: radial-gradient(circle at 0 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+  }
+
+  .criterion-sidebar-indicator::after {
+    right: calc(var(--curve) * -1);
+    -webkit-mask: radial-gradient(circle at 100% 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
+    mask: radial-gradient(circle at 100% 0, transparent var(--curve), #000 calc(var(--curve) + 0.5px));
   }
 
   .criterion-sidebar-item {
