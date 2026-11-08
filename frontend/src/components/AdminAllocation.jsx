@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   UserCheck, UserPlus, Building, PlusCircle, CheckCircle2, 
-  AlertCircle, Shield, RefreshCw, Save, Search, Download, Upload, Copy, Key, RotateCcw
+  AlertCircle, Shield, RefreshCw, Save, Search, Download, Upload, Copy, Key, RotateCcw, Pencil
 } from 'lucide-react';
 
 export default function AdminAllocation({ 
@@ -20,6 +20,19 @@ export default function AdminAllocation({
   const [searchAuditor, setSearchAuditor] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveIsError, setSaveIsError] = useState(false);
+  const [resettingAllAssignments, setResettingAllAssignments] = useState(false);
+  const [resetRequest, setResetRequest] = useState(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [editingAssignmentIds, setEditingAssignmentIds] = useState(() => new Set());
+  const [editRequest, setEditRequest] = useState(null);
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [autoAllotPreview, setAutoAllotPreview] = useState(null);
+  const [isPreviewingAutoAllot, setIsPreviewingAutoAllot] = useState(false);
+  const [isApplyingAutoAllot, setIsApplyingAutoAllot] = useState(false);
   // College Head logins (from bootstrap.institutes; Admin only)
   const [heads, setHeads] = useState(institutes || []);
   useEffect(() => { setHeads(institutes || []); }, [institutes]);
@@ -111,7 +124,12 @@ export default function AdminAllocation({
     try {
       const res = await fetch(`/api/assignments/?cycle_id=${selectedCycleId || ''}`);
       const json = await res.json();
-      setAssignments(json.assignments || []);
+      setAssignments((json.assignments || []).map(assignment => ({
+        ...assignment,
+        saved_auditor_1_id: assignment.auditor_1?.id || null,
+        saved_auditor_2_id: assignment.auditor_2?.id || null,
+      })));
+      setEditingAssignmentIds(new Set());
     } catch (err) {
       console.error("Failed to load assignments:", err);
     } finally {
@@ -128,26 +146,36 @@ export default function AdminAllocation({
     (deptFilter === 'ALL' || String(a.department_id) === String(deptFilter)) &&
     (assignFilter === 'ALL' || (assignFilter === 'assigned' ? a.assigned : !a.assigned)));
 
+  const auditorAllocationCounts = new Map();
+  assignments.forEach(assignment => {
+    [assignment.auditor_1?.id, assignment.auditor_2?.id].filter(Boolean).forEach(id => {
+      auditorAllocationCounts.set(id, (auditorAllocationCounts.get(id) || 0) + 1);
+    });
+  });
+
   // Deployment rules (also enforced by the server):
   //  * not from the department's own college
   //  * not from the same department (discipline) in any college, e.g. no ECE auditor for ECE / ECE (VLSI)
   //  * Auditor 2 is not from Auditor 1's department (any college)
-  //  * one department per auditor in this audit cycle
+  //  * one department in each of at most two other colleges per audit cycle
   const discipline = (code) => (code || '').split('(')[0].trim().toUpperCase();
   const auditorDept = (aud) => discipline(aud?.dept_name || aud?.dept);
   const auditorChoices = (row, slot) => {
     const current = row[slot]?.id;
     const partner = slot === 'auditor_1' ? row.auditor_2 : row.auditor_1;
     const partnerDept = partner ? auditorDept(auditors.find(a => a.id === partner.id) || partner) : '';
-    const usedElsewhere = new Set(assignments.filter(a => a.department_id !== row.department_id)
-      .flatMap(a => [a.auditor_1?.id, a.auditor_2?.id]).filter(Boolean));
-    return auditors.filter(a => a.id === current || (
-      a.institute_code !== row.institute_code &&
-      auditorDept(a) !== discipline(row.department_code) &&
-      a.id !== partner?.id &&
-      (!partnerDept || auditorDept(a) !== partnerDept) &&
-      !usedElsewhere.has(a.id)
-    ));
+    return auditors.filter(a => {
+      if (a.id === current) return true;
+      if (a.institute_code === row.institute_code ||
+          auditorDept(a) === discipline(row.department_code) ||
+          a.id === partner?.id ||
+          (partnerDept && auditorDept(a) === partnerDept)) return false;
+      const assignedElsewhere = assignments.filter(assignment =>
+        assignment.department_id !== row.department_id &&
+        [assignment.auditor_1?.id, assignment.auditor_2?.id].includes(a.id));
+      const assignedColleges = new Set(assignedElsewhere.map(assignment => assignment.institute_code));
+      return !assignedColleges.has(row.institute_code) && assignedColleges.size < 2;
+    });
   };
 
   // Update auditor selection
@@ -198,9 +226,10 @@ export default function AdminAllocation({
   };
 
   // Reset one department: clear its auditors so they can be reassigned (scores already entered are kept)
-  const resetAssignmentRow = async (row) => {
+  const resetAssignmentRow = (row) => {
     const label = `${row.institute_code} - ${row.department_code}`;
     const blank = { id: null, assigned: false, auditor_1: null, auditor_2: null, auditor_1_criteria: [], auditor_2_criteria: [],
+      saved_auditor_1_id: null, saved_auditor_2_id: null,
       assigned_criteria: [], deployment_check: 'Not assigned yet', status: 'Not started' };
     if (!row.assigned) {  // nothing saved yet: just clear the unsaved choices
       setAssignments(prev => prev.map(a => (a.department_id === row.department_id ? { ...a, ...blank } : a)));
@@ -210,25 +239,165 @@ export default function AdminAllocation({
     if (!window.confirm(`Reset the auditor assignment of ${label}${cycleName ? ` for ${cycleName.academic_year} ${cycleName.semester} (${cycleName.cycle_type})` : ''}?\n\n` +
       'Both auditors are removed from this department and become available for other departments. ' +
       'Scores and ATRs already entered are kept.')) return;
-    setSaveIsError(false);
-    setSaveStatus(`Resetting ${label}...`);
-    let failed = false;
+    setEditingAssignmentIds(prev => {
+      const next = new Set(prev);
+      next.delete(row.department_id);
+      return next;
+    });
+    setResetError('');
+    setResetPassword('');
+    setResetRequest({ type: 'single', row, label, blank });
+  };
+
+  const toggleAssignmentEdit = (row) => {
+    const isEditing = editingAssignmentIds.has(row.department_id);
+    setEditingAssignmentIds(prev => {
+      const next = new Set(prev);
+      if (isEditing) next.delete(row.department_id);
+      else next.add(row.department_id);
+      return next;
+    });
+    if (isEditing) {
+      setAssignments(current => current.map(assignment => assignment.department_id === row.department_id
+        ? {
+          ...assignment,
+          auditor_1: auditors.find(auditor => auditor.id === assignment.saved_auditor_1_id) || null,
+          auditor_2: auditors.find(auditor => auditor.id === assignment.saved_auditor_2_id) || null,
+        }
+        : assignment));
+    }
+  };
+
+  const resetAllAssignments = () => {
+    const cycleName = cycles.find(c => c.id === selectedCycleId);
+    const cycleLabel = cycleName
+      ? `${cycleName.academic_year} ${cycleName.semester} (${cycleName.cycle_type})`
+      : 'the selected cycle';
+    const savedCount = assignments.filter(assignment => assignment.assigned).length;
+    if (!window.confirm(
+      `Full reset for ${cycleLabel}?\n\n` +
+      `This removes all ${savedCount} saved auditor assignments and their criteria, and clears unsaved choices. ` +
+      'Scores and ATR data are kept.'
+    )) return;
+    setResetError('');
+    setResetPassword('');
+    setResetRequest({ type: 'all', cycleLabel });
+  };
+
+  const confirmAssignmentReset = async (event) => {
+    event.preventDefault();
+    if (!resetRequest || !resetPassword) {
+      setResetError('Enter the current Admin password to continue.');
+      return;
+    }
+    setIsResetting(true);
+    setResettingAllAssignments(true);
     try {
-      const res = await fetch('/api/assignments/reset/', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ department_id: row.department_id, cycle_id: selectedCycleId })
+      const isFullReset = resetRequest.type === 'all';
+      const endpoint = isFullReset ? '/api/assignments/reset-all/' : '/api/assignments/reset/';
+      const payload = isFullReset
+        ? { cycle_id: selectedCycleId, password: resetPassword }
+        : {
+          department_id: resetRequest.row.department_id,
+          cycle_id: selectedCycleId,
+          password: resetPassword,
+        };
+      setSaveIsError(false);
+      setSaveStatus(isFullReset ? 'Resetting all auditor assignments...' : `Resetting ${resetRequest.label}...`);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
       const json = await res.json();
       if (!res.ok || json.status !== 'success') throw new Error(json.error || 'Reset failed');
-      setAssignments(prev => prev.map(a => (a.department_id === row.department_id ? { ...a, ...blank } : a)));
-      setSaveStatus(`${label} reset. Choose new auditors and click Save.` +
-        (json.scores_kept ? ` (${json.scores_kept} scores already entered are kept.)` : ''));
+      if (isFullReset) {
+        setAssignments(prev => prev.map(assignment => ({
+          ...assignment,
+          id: null,
+          assigned: false,
+          auditor_1: null,
+          auditor_2: null,
+          saved_auditor_1_id: null,
+          saved_auditor_2_id: null,
+          auditor_1_criteria: [],
+          auditor_2_criteria: [],
+          assigned_criteria: [],
+          deployment_check: 'Not assigned yet',
+          status: 'Not started',
+        })));
+        setSaveStatus(
+          `All assignments reset (${json.assignments_removed} removed). ` +
+          `${json.scores_kept} existing scores and all ATR data are kept.`
+        );
+      } else {
+        setAssignments(prev => prev.map(a => (
+          a.department_id === resetRequest.row.department_id
+            ? { ...a, ...resetRequest.blank }
+            : a
+        )));
+        setSaveStatus(`${resetRequest.label} reset. Choose new auditors and click Save.`);
+      }
+      setResetRequest(null);
+      setResetPassword('');
     } catch (err) {
-      failed = true;
-      setSaveStatus(err.message || 'Reset failed');
+      setResetError(err.message || 'Reset failed');
     } finally {
-      setSaveIsError(failed);
-      setTimeout(() => setSaveStatus(''), 6000);
+      setIsResetting(false);
+      setResettingAllAssignments(false);
+    }
+  };
+
+  const previewAutoAllotment = async () => {
+    if (!selectedCycleId) return;
+    setIsPreviewingAutoAllot(true);
+    setSaveIsError(false);
+    try {
+      const res = await fetch('/api/assignments/auto-allot/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview', cycle_id: selectedCycleId })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.error || 'Could not create auto-allotment preview');
+      setAutoAllotPreview(json);
+    } catch (err) {
+      setSaveIsError(true);
+      setSaveStatus(err.message || 'Could not create auto-allotment preview');
+    } finally {
+      setIsPreviewingAutoAllot(false);
+    }
+  };
+
+  const applyAutoAllotment = async () => {
+    if (!autoAllotPreview?.proposed?.length) return;
+    setIsApplyingAutoAllot(true);
+    setSaveIsError(false);
+    try {
+      const res = await fetch('/api/assignments/auto-allot/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'apply',
+          cycle_id: selectedCycleId,
+          proposed: autoAllotPreview.proposed,
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.error || 'Could not apply auto-allotment');
+      await fetchAssignments();
+      const repeated = (json.repeated_auditors || []).map(auditor => auditor.name);
+      setSaveStatus(
+        `Auto-allotted ${json.assignments_created} department(s).` +
+        (repeated.length ? ` Repeated across colleges: ${repeated.join(', ')}.` : ' No auditors are assigned twice.')
+      );
+      setAutoAllotPreview(null);
+    } catch (err) {
+      setSaveIsError(true);
+      setSaveStatus(err.message || 'Could not apply auto-allotment');
+    } finally {
+      setIsApplyingAutoAllot(false);
+      setTimeout(() => setSaveStatus(''), 8000);
     }
   };
 
@@ -259,6 +428,19 @@ export default function AdminAllocation({
         // Update only this row so unsaved choices in other rows are kept
         setAssignments(prev => prev.map(a => (a.department_id === assignment.department_id
           ? { ...a, id: json.assignment_id, assigned: true, deployment_check: json.check } : a)));
+        setAssignments(prev => prev.map(a => (a.department_id === assignment.department_id
+          ? {
+            ...a,
+            saved_auditor_1_id: assignment.auditor_1?.id || null,
+            saved_auditor_2_id: assignment.auditor_2?.id || null,
+          }
+          : a)));
+        setEditingAssignmentIds(prev => {
+          const next = new Set(prev);
+          next.delete(assignment.department_id);
+          return next;
+        });
+        return true;
       } else {
         failed = true;
         setSaveStatus(json.error || 'Failed to save assignment');
@@ -269,6 +451,71 @@ export default function AdminAllocation({
     } finally {
       setSaveIsError(failed);
       setTimeout(() => setSaveStatus(''), failed ? 6000 : 2000);
+    }
+    return false;
+  };
+
+  const handleSaveAssignmentClick = (assignment) => {
+    const auditorIdsChanged = assignment.auditor_1?.id !== assignment.saved_auditor_1_id ||
+      assignment.auditor_2?.id !== assignment.saved_auditor_2_id;
+    if (assignment.assigned && auditorIdsChanged) {
+      setEditError('');
+      setEditPassword('');
+      setEditRequest(assignment);
+      return;
+    }
+    saveAssignmentRow(assignment);
+  };
+
+  const confirmAssignmentEdit = async (event) => {
+    event.preventDefault();
+    if (!editRequest || !editPassword) {
+      setEditError('Enter the current Admin password to save auditor changes.');
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const payload = {
+        department_id: editRequest.department_id,
+        cycle_id: selectedCycleId,
+        auditor_1_id: editRequest.auditor_1?.id || null,
+        auditor_2_id: editRequest.auditor_2?.id || null,
+        auditor_1_criteria: editRequest.auditor_1_criteria || [],
+        auditor_2_criteria: editRequest.auditor_2_criteria || [],
+        status: editRequest.status || 'Not started',
+        edit_password: editPassword,
+      };
+      const res = await fetch('/api/assignments/save/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.error || 'Could not update auditor assignment');
+      setAssignments(prev => prev.map(assignment => assignment.department_id === editRequest.department_id
+        ? {
+          ...assignment,
+          id: json.assignment_id,
+          assigned: true,
+          deployment_check: json.check,
+          saved_auditor_1_id: editRequest.auditor_1?.id || null,
+          saved_auditor_2_id: editRequest.auditor_2?.id || null,
+        }
+        : assignment));
+      setEditingAssignmentIds(prev => {
+        const next = new Set(prev);
+        next.delete(editRequest.department_id);
+        return next;
+      });
+      setSaveIsError(false);
+      setSaveStatus(`Updated auditors: ${editRequest.institute_code} - ${editRequest.department_code}`);
+      setEditRequest(null);
+      setEditPassword('');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      setEditError(err.message || 'Could not update auditor assignment');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -456,11 +703,33 @@ export default function AdminAllocation({
           overflow: 'hidden',
           boxShadow: 'var(--shadow-card)'
         }}>
-          <div style={{ padding: '12px 18px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ padding: '12px 18px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               💡 <strong>Individual Criteria Assignment</strong>: Click criterion chips under each auditor to assign specific criteria (e.g. C1-C3 to Auditor 1, C4-C9 to Auditor 2).
             </span>
-            {saveStatus && <span style={{ fontSize: '0.75rem', color: saveIsError ? '#ef4444' : '#10b981', fontWeight: 700 }}>{saveStatus}</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
+              {saveStatus && <span style={{ fontSize: '0.75rem', color: saveIsError ? '#ef4444' : '#10b981', fontWeight: 700 }}>{saveStatus}</span>}
+              <button
+                type="button"
+                onClick={previewAutoAllotment}
+                className="btn btn-secondary btn-sm"
+                disabled={isPreviewingAutoAllot || loading || !selectedCycleId}
+                title="Create a rule-checked proposal for departments without a complete auditor pair"
+              >
+                <UserCheck size={13} />
+                {isPreviewingAutoAllot ? 'Preparing...' : 'Auto allot'}
+              </button>
+              <button
+                type="button"
+                onClick={resetAllAssignments}
+                className="btn btn-outline btn-sm"
+                disabled={resettingAllAssignments || loading || !selectedCycleId}
+                title="Remove all auditor assignments and criteria for the selected cycle; scores and ATRs remain"
+              >
+                <RotateCcw size={13} />
+                {resettingAllAssignments ? 'Resetting...' : 'Full reset'}
+              </button>
+            </div>
           </div>
 
           {/* Choose the college and department to assign auditors to */}
@@ -496,7 +765,7 @@ export default function AdminAllocation({
               ))}
             </div>
             <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              Not offered: same college, same department in any college, Auditor 1's department (for Auditor 2), or already assigned in this cycle. Click Save on each row.
+            Not offered: own college, matching department discipline, duplicate auditor pair, or another department in the same college. An auditor may cover one department in each of two other colleges. Edit saved auditor selections and confirm with the current Admin password.
             </span>
           </div>
 
@@ -510,7 +779,7 @@ export default function AdminAllocation({
                   <th style={{ minWidth: '280px' }}>Second Auditor (Auditor 2) & Assigned Criteria</th>
                   <th style={{ minWidth: '150px' }}>Deployment Check</th>
                   <th style={{ width: '130px' }}>Status</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>Save / Reset</th>
+                  <th style={{ width: '150px', textAlign: 'center' }}>Save / Edit / Reset</th>
                 </tr>
               </thead>
               <tbody>
@@ -524,6 +793,11 @@ export default function AdminAllocation({
                   const a2Set = new Set(row.auditor_2_criteria || []);
                   const isA1All = criteriaList.length > 0 && a1Set.size === criteriaList.length;
                   const isA2All = criteriaList.length > 0 && a2Set.size === criteriaList.length;
+                  const isEditing = editingAssignmentIds.has(row.department_id);
+                  const a1AllocationCount = auditorAllocationCounts.get(row.auditor_1?.id) || 0;
+                  const a2AllocationCount = auditorAllocationCounts.get(row.auditor_2?.id) || 0;
+                  const repeatedA1 = a1AllocationCount > 1;
+                  const repeatedA2 = a2AllocationCount > 1;
 
                   return (
                     <tr key={row.department_id}>
@@ -538,7 +812,19 @@ export default function AdminAllocation({
                             const found = auditors.find(a => a.id === Number(e.target.value));
                             handleAuditorChange(row.department_id, 'auditor_1', found || null);
                           }}
-                          style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
+                          disabled={Boolean(row.auditor_1?.id) && !isEditing}
+                          style={{
+                            fontSize: '0.775rem',
+                            padding: '4px 8px',
+                            marginBottom: '6px',
+                            ...(repeatedA1 ? {
+                              background: '#7f1d1d',
+                              border: '2px solid #ef4444',
+                              color: '#fff',
+                              fontWeight: 800,
+                            } : {}),
+                          }}
+                          title={repeatedA1 ? `This auditor is allocated ${a1AllocationCount} times in this audit cycle` : undefined}
                         >
                           <option value="">-- Unassigned --</option>
                           {auditorChoices(row, 'auditor_1')
@@ -548,6 +834,11 @@ export default function AdminAllocation({
                               </option>
                             ))}
                         </select>
+                        {repeatedA1 && (
+                            <span style={{ display: 'block', color: '#ef4444', fontSize: '0.7rem', fontWeight: 800, marginBottom: '5px' }}>
+                              Assigned {a1AllocationCount} times
+                            </span>
+                        )}
 
                         {/* Auditor 1 individual criteria picker */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
@@ -599,7 +890,19 @@ export default function AdminAllocation({
                             const found = auditors.find(a => a.id === Number(e.target.value));
                             handleAuditorChange(row.department_id, 'auditor_2', found || null);
                           }}
-                          style={{ fontSize: '0.775rem', padding: '4px 8px', marginBottom: '6px' }}
+                          disabled={Boolean(row.auditor_2?.id) && !isEditing}
+                          style={{
+                            fontSize: '0.775rem',
+                            padding: '4px 8px',
+                            marginBottom: '6px',
+                            ...(repeatedA2 ? {
+                              background: '#7f1d1d',
+                              border: '2px solid #ef4444',
+                              color: '#fff',
+                              fontWeight: 800,
+                            } : {}),
+                          }}
+                          title={repeatedA2 ? `This auditor is allocated ${a2AllocationCount} times in this audit cycle` : undefined}
                         >
                           <option value="">-- Unassigned --</option>
                           {auditorChoices(row, 'auditor_2')
@@ -609,6 +912,11 @@ export default function AdminAllocation({
                               </option>
                             ))}
                         </select>
+                        {repeatedA2 && (
+                            <span style={{ display: 'block', color: '#ef4444', fontSize: '0.7rem', fontWeight: 800, marginBottom: '5px' }}>
+                              Assigned {a2AllocationCount} times
+                            </span>
+                        )}
 
                         {/* Auditor 2 individual criteria picker */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
@@ -684,12 +992,21 @@ export default function AdminAllocation({
                       {/* Save / Reset Buttons */}
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
-                          onClick={() => saveAssignmentRow(row)}
+                          onClick={() => handleSaveAssignmentClick(row)}
                           className="btn btn-primary btn-sm"
                           style={{ padding: '4px 8px' }}
-                          title="Save this department's auditors"
+                          title="Save this department's auditors and criteria"
                         >
                           <Save size={13} />
+                        </button>
+                        <button
+                          onClick={() => toggleAssignmentEdit(row)}
+                          className="btn btn-outline btn-sm"
+                          style={{ padding: '4px 8px', marginLeft: '6px' }}
+                          disabled={!row.assigned}
+                          title={isEditing ? 'Cancel auditor edits' : 'Edit saved auditor selections'}
+                        >
+                          <Pencil size={13} />
                         </button>
                         <button
                           onClick={() => resetAssignmentRow(row)}
@@ -799,8 +1116,17 @@ export default function AdminAllocation({
                 style={{ paddingLeft: '32px', fontSize: '0.8rem' }}
               />
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-              Total Pooled Auditors: <strong>{auditors.length}</strong> with system-generated logins
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                Total Pooled Auditors: <strong>{auditors.length}</strong> with system-generated logins
+              </div>
+              <a
+                href="/api/auditors/export/"
+                className="btn btn-secondary btn-sm"
+                title="Download the complete auditor directory as an Excel workbook"
+              >
+                <Download size={14} /> Download Excel
+              </a>
             </div>
           </div>
 
@@ -1129,6 +1455,193 @@ Mrs. M. Priya,KRCE,ECE,Associate Professor,5 - 10 years,priya.m@krce.ac.in"
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {resetRequest && (
+        <div className="modal-overlay" role="presentation">
+          <div className="modal-content animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="assignment-reset-title" style={{ maxWidth: '440px' }}>
+            <h3 id="assignment-reset-title" style={{ marginBottom: '8px', fontSize: '1.1rem', fontWeight: 800 }}>
+              Confirm auditor reset
+            </h3>
+            <p style={{ marginBottom: '14px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              {resetRequest.type === 'all'
+                ? `Enter the current Admin password to remove all auditor assignments for ${resetRequest.cycleLabel}. Scores and ATRs will remain.`
+                : `Enter the current Admin password to reset ${resetRequest.label}. Scores and ATRs will remain.`}
+            </p>
+            <form onSubmit={confirmAssignmentReset} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700 }}>
+                Current Admin password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                  value={resetPassword}
+                  onChange={(event) => {
+                    setResetPassword(event.target.value);
+                    setResetError('');
+                  }}
+                  style={{ marginTop: '5px' }}
+                />
+              </label>
+              {resetError && (
+                <p role="alert" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{resetError}</p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isResetting}
+                  onClick={() => {
+                    setResetRequest(null);
+                    setResetPassword('');
+                    setResetError('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isResetting}>
+                  <RotateCcw size={14} />
+                  {isResetting ? 'Resetting...' : 'Authorize reset'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editRequest && (
+        <div className="modal-overlay" role="presentation">
+          <div className="modal-content animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="assignment-edit-title" style={{ maxWidth: '440px' }}>
+            <h3 id="assignment-edit-title" style={{ marginBottom: '8px', fontSize: '1.1rem', fontWeight: 800 }}>
+              Confirm auditor changes
+            </h3>
+            <p style={{ marginBottom: '14px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Enter the current Admin password to update the saved auditors for {editRequest.institute_code} - {editRequest.department_code}. Existing scores and ATRs will remain.
+            </p>
+            <form onSubmit={confirmAssignmentEdit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700 }}>
+                Current Admin password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                  value={editPassword}
+                  onChange={(event) => {
+                    setEditPassword(event.target.value);
+                    setEditError('');
+                  }}
+                  style={{ marginTop: '5px' }}
+                />
+              </label>
+              {editError && (
+                <p role="alert" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{editError}</p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isSavingEdit}
+                  onClick={() => {
+                    setEditRequest(null);
+                    setEditPassword('');
+                    setEditError('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isSavingEdit}>
+                  <Save size={14} />
+                  {isSavingEdit ? 'Saving...' : 'Authorize update'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {autoAllotPreview && (
+        <div className="modal-overlay" role="presentation">
+          <div className="modal-content animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="auto-allot-title" style={{ maxWidth: '760px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <h3 id="auto-allot-title" style={{ fontSize: '1.15rem', fontWeight: 800 }}>Auto-allotment preview</h3>
+                <p style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                  Review the proposed assignments before saving. Existing auditor assignments are not changed.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close preview"
+                onClick={() => setAutoAllotPreview(null)}
+                style={{ background: 'transparent', border: 0, color: 'var(--text-secondary)', fontSize: '1.4rem', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '0.8rem' }}>
+              <strong>{autoAllotPreview.proposed.length} department(s) proposed</strong>
+              <span style={{ color: autoAllotPreview.unfilled.length ? '#f59e0b' : 'var(--grade-y)' }}>
+                {autoAllotPreview.unfilled.length} department(s) cannot be fully allotted under the rules
+              </span>
+            </div>
+            {autoAllotPreview.repeated_auditors.length > 0 && (
+              <div style={{ padding: '10px 12px', marginBottom: '12px', borderRadius: '8px', background: 'var(--primary-light)', border: '1px solid var(--primary-border)', fontSize: '0.8rem' }}>
+                <strong>Auditors assigned twice across colleges:</strong>
+                <ul style={{ margin: '6px 0 0 18px' }}>
+                  {autoAllotPreview.repeated_auditors.map(auditor => (
+                    <li key={auditor.auditor_id}>
+                      {auditor.name} ({auditor.home_college}): {auditor.assignments.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div style={{ maxHeight: '42vh', overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+              <table className="audit-table">
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Auditor 1</th>
+                    <th>Auditor 2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoAllotPreview.proposed.map(item => (
+                    <tr key={item.department_id}>
+                      <td>{item.institute_code} - {item.department_code}</td>
+                      <td>{item.auditor_1_name}</td>
+                      <td>{item.auditor_2_name}</td>
+                    </tr>
+                  ))}
+                  {autoAllotPreview.proposed.length === 0 && (
+                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No valid assignments available.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {autoAllotPreview.unfilled.length > 0 && (
+              <p style={{ marginTop: '10px', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                Not filled: {autoAllotPreview.unfilled.map(dept => `${dept.institute_code} - ${dept.department_code}`).join(', ')}
+              </p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button type="button" className="btn btn-secondary" disabled={isApplyingAutoAllot} onClick={() => setAutoAllotPreview(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={isApplyingAutoAllot || !autoAllotPreview.proposed.length}
+                onClick={applyAutoAllotment}
+              >
+                <Save size={14} />
+                {isApplyingAutoAllot ? 'Applying...' : 'Confirm and save'}
+              </button>
+            </div>
           </div>
         </div>
       )}

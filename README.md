@@ -35,7 +35,15 @@ Skip this if the project already runs on this computer.
    cd E:\NBA_NV\backend
    pip install -r requirements.txt
    python manage.py migrate
+   python manage.py createcachetable
    ```
+   For a new, empty database, load the bundled audit data and create the initial Admin account:
+   ```powershell
+   python manage.py seed_audit_data
+   python manage.py changepassword admin
+   ```
+   `seed_audit_data` creates `admin` without a usable password; choose its password with `changepassword`.
+   Do not run the seed command on a database that already contains audit data.
 3. Install the frontend packages and build the website:
    ```powershell
    cd E:\NBA_NV\frontend
@@ -211,6 +219,11 @@ Inside **Auditor Allocation & Department Administration**:
   - Auditor 2 can be assigned other criteria (e.g., `C4, C5, C6`).
   - Or click `All (9)` to assign the full criteria scope.
 - **Cross-Deployment Rule Check**: Automatically checks that auditors are not assigned to audit their own parent department (e.g., a CSE faculty cannot audit CSE).
+- Auditors cannot be assigned to their own college and may be assigned to one department in each of the other two colleges per cycle.
+- **Auto allot** prepares a rule-checked preview for departments without complete auditor pairs. It prioritizes auditors not yet used in the cycle, prefers pairs from different home colleges where possible, and reuses an auditor only after no unique pair remains. Review the proposed auditors, unfilled departments, and any faculty assigned twice across colleges before confirming.
+- Repeated auditors are highlighted on the allocation table. Use **Edit** beside a department row to change saved auditors; saving changed selections requires the current Admin password and preserves scores and ATRs.
+- Individual and full resets remain available with the current Admin password.
+- **Full reset** removes all auditor assignments and criteria for the selected cycle while keeping scores and ATRs. The Auditor Pool also offers an Excel directory download without login credentials.
 
 ---
 
@@ -393,8 +406,11 @@ All endpoints except `auth/login` require a logged-in session. "Scoped" means no
 | `/api/ai/reports/<id>/`, `/api/ai/reports/<id>/download/<docx\|xlsx\|pdf>/` | `GET`, `DELETE` | Owner, scope re-checked | Report status / protected download |
 | `/api/assignments/` | `GET` | Admin | Auditor assignments with individual criteria allocations |
 | `/api/assignments/save/` | `POST` | Admin | Saves Lead/Second auditors and criteria per auditor |
+| `/api/assignments/auto-allot/` | `POST` | Admin | Previews or applies valid auditor assignments for unfilled departments |
+| `/api/assignments/reset/`, `/api/assignments/reset-all/` | `POST` | Admin + current password | Removes one or all assignments for a cycle; preserves scores and ATRs |
 | `/api/departments/add/` | `POST` | Admin | Adds a department and provisions the HOD login |
 | `/api/auditors/add/` | `POST` | Admin | Registers an auditor and generates username & password |
+| `/api/auditors/export/` | `GET` | Admin | Downloads the auditor directory as an Excel workbook (no credentials) |
 | `/api/auditors/template/`| `GET` | Admin | CSV template for bulk auditor import |
 | `/api/auditors/bulk-upload/`| `POST` | Admin | Imports auditors from CSV and generates logins |
 | `/api/export/department-excel/` | `GET` | Any role, scoped | Department audit sheet and ATR as Excel-compatible CSV |

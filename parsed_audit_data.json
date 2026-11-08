@@ -422,6 +422,231 @@
       "designation": "AHoD/Asst.Prof. (Maths)",
       "experience": "10 and above",
       "email": "sugapriyap.maths@krce.ac.in"
+    },
+    {
+      "sl": "45",
+      "institute": "MKCE",
+      "department": "AI",
+      "name": "Dr.S.Bharani Nayagi",
+      "designation": "AP/AI (AHoD)",
+      "experience": "3 - 5 YEARS",
+      "email": "bharaninayagis.aiml@mkce.ac.in"
+    },
+    {
+      "sl": "46",
+      "institute": "MKCE",
+      "department": "AI",
+      "name": "Mrs.P.Vidhya",
+      "designation": "AP/AI (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "vidhyap.ai@mkce.ac.in"
+    },
+    {
+      "sl": "47",
+      "institute": "MKCE",
+      "department": "CIVIL",
+      "name": "Mr.A.Logeshkumaran",
+      "designation": "AP/CIVIL (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "logeshkumarana.civil@mkce.ac.in"
+    },
+    {
+      "sl": "48",
+      "institute": "MKCE",
+      "department": "CSBS",
+      "name": "Mr.T.Viswanath Kani",
+      "designation": "AP/CSBS (AHoD)",
+      "experience": "3 - 5 YEARS",
+      "email": "viswanathkanit.csbs@mkce.ac.in"
+    },
+    {
+      "sl": "49",
+      "institute": "MKCE",
+      "department": "CSBS",
+      "name": "Mrs.M.Sathya",
+      "designation": "AP/CSBS (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "sathyam.csbs@mkce.ac.in"
+    },
+    {
+      "sl": "50",
+      "institute": "MKCE",
+      "department": "CSE & CYBERSECURITY",
+      "name": "Mrs.K.Makanyadevi",
+      "designation": "AP/CSE (AHoD, IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "makanyadevik.cse@mkce.ac.in"
+    },
+    {
+      "sl": "51",
+      "institute": "MKCE",
+      "department": "CSE & CYBERSECURITY",
+      "name": "Dr.B.Padmini Devi",
+      "designation": "Professor/CSE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "padminidevib.cse@mkce.ac.in"
+    },
+    {
+      "sl": "52",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.S.Sivaranjani",
+      "designation": "AP/ECE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "ssivaranjani.ece@mkce.ac.in"
+    },
+    {
+      "sl": "53",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.P.Ramakrishnan",
+      "designation": "AP/ECE (IQAC Coordinator)",
+      "experience": "10 AND ABOVE",
+      "email": "ramakrishnanp.ece@mkce.ac.in"
+    },
+    {
+      "sl": "54",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.P.T.Sivagurunathan",
+      "designation": "AP/ECE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "sivagurunathanpt.ece@mkce.ac.in"
+    },
+    {
+      "sl": "55",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.E.Dinesh",
+      "designation": "ASP/ECE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "dineshe.ece@mkce.ac.in"
+    },
+    {
+      "sl": "56",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.A.Sridevi",
+      "designation": "Professor/ECE",
+      "experience": "10 AND ABOVE",
+      "email": "sridevia.ece@mkce.ac.in"
+    },
+    {
+      "sl": "57",
+      "institute": "MKCE",
+      "department": "ECE",
+      "name": "Dr.R.Balamurugan",
+      "designation": "AP/ECE (AHoD)",
+      "experience": "3 - 5 YEARS",
+      "email": "balamuruganr.mech@mkce.ac.in"
+    },
+    {
+      "sl": "58",
+      "institute": "MKCE",
+      "department": "EEE",
+      "name": "Mr M Ramesh",
+      "designation": "AP/EEE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "rameshm.eee@mkce.ac.in"
+    },
+    {
+      "sl": "59",
+      "institute": "MKCE",
+      "department": "EEE",
+      "name": "Mrs.S.Kiruthika",
+      "designation": "AP/EEE (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "kiruthikas.eie@mkce.ac.in"
+    },
+    {
+      "sl": "60",
+      "institute": "MKCE",
+      "department": "EEE",
+      "name": "Mr.S.Dinesh Kumar",
+      "designation": "AP/EEE (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "dineshkumars.eee@mkce.ac.in"
+    },
+    {
+      "sl": "61",
+      "institute": "MKCE",
+      "department": "IT",
+      "name": "Dr.A.Syed Musthafa",
+      "designation": "Professor/IT (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "syedmusthafaa.it@mkce.ac.in"
+    },
+    {
+      "sl": "62",
+      "institute": "MKCE",
+      "department": "IT",
+      "name": "Dr.S.Geeitha",
+      "designation": "ASP/IT (AHoD, IQAC Coordinator)",
+      "experience": "10 AND ABOVE",
+      "email": "geethas.it@mkce.ac.in"
+    },
+    {
+      "sl": "63",
+      "institute": "MKCE",
+      "department": "MECH",
+      "name": "Dr.T.Nithyanandam",
+      "designation": "ASP/MECH (AHoD, IQAC Coordinator)",
+      "experience": "10 AND ABOVE",
+      "email": "nithyanandamt.mech@mkce.ac.in"
+    },
+    {
+      "sl": "64",
+      "institute": "MKCE",
+      "department": "S&H",
+      "name": "Mrs. K. Poomalar",
+      "designation": "AP/English (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "poomalark.snh@mkce.ac.in"
+    },
+    {
+      "sl": "65",
+      "institute": "MKCE",
+      "department": "S&H",
+      "name": "Mrs.K.Shantha Lakshmi",
+      "designation": "AP/Maths (AHoD)",
+      "experience": "3 - 5 YEARS",
+      "email": "shanthalakshmik.snh@mkce.ac.in"
+    },
+    {
+      "sl": "66",
+      "institute": "MKCE",
+      "department": "S&H",
+      "name": "Dr.M.Suganya",
+      "designation": "AP/Maths (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "suganyam.maths@mkce.ac.in"
+    },
+    {
+      "sl": "67",
+      "institute": "MKCE",
+      "department": "S&H",
+      "name": "Dr.V.Sivakumar",
+      "designation": "AP/Physics (AHoD)",
+      "experience": "3 - 5 YEARS",
+      "email": "sivakumarv.physics@mkce.ac.in"
+    },
+    {
+      "sl": "68",
+      "institute": "MKCE",
+      "department": "S&H",
+      "name": "Dr.S.Geetha",
+      "designation": "AP/Chemistry (AHoD)",
+      "experience": "10 AND ABOVE",
+      "email": "geethas.snh@mkce.ac.in"
+    },
+    {
+      "sl": "69",
+      "institute": "MKCE",
+      "department": "MBA",
+      "name": "Mrs.A.Santhiya",
+      "designation": "AP/MBA (IQAC Coordinator)",
+      "experience": "3 - 5 YEARS",
+      "email": "santhiyaa.mba@mkce.ac.in"
     }
   ],
   "criteria": {

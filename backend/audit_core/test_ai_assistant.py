@@ -561,16 +561,43 @@ class AllocationRuleTests(AIAssistantBase):
         self.ee_cb = Auditor.objects.create(name='EE from CB', institute=self.cb, dept_name='EE')
         self.ee2_cb = Auditor.objects.create(name='EE2 from CB', institute=self.cb, dept_name='EE')
         self.ce_cb = Auditor.objects.create(name='CE from CB', institute=self.cb, dept_name='CE')
+        self.cc = Institute.objects.create(code='CC', name='College C')
+        self.cd = Institute.objects.create(code='CD', name='College D')
+        self.c1_dept = Department.objects.create(institute=self.cc, code='IT', name='IT C', hod_name='Dr C')
+        self.d1_dept = Department.objects.create(institute=self.cd, code='IT', name='IT D', hod_name='Dr D')
 
     def save(self, dept, a1=None, a2=None):
         return self.post('/api/assignments/save/', {'department_id': dept.id, 'cycle_id': self.cur.id,
                                                     'auditor_1_id': a1.id if a1 else None,
                                                     'auditor_2_id': a2.id if a2 else None})
 
+    def prefill_auto_allot_cycle(self, cycle, target_departments):
+        target_ids = {department.id for department in target_departments}
+        for department in Department.objects.exclude(id__in=target_ids):
+            AuditAssignment.objects.create(
+                cycle=cycle,
+                department=department,
+                auditor_1=self.auditor,
+                auditor_2=self.me_cb,
+            )
+
     def test_same_department_in_another_college_refused(self):
         r = self.save(self.a1, self.me_cb)          # ME auditor for CA - ME
         self.assertEqual(r.status_code, 400)
         self.assertIn('any college', r.json()['error'])
+
+    def test_ai_and_cybersecurity_department_aliases_are_same_discipline(self):
+        ai_institute = Institute.objects.create(code='AI', name='AI College')
+        ai_department = Department.objects.create(institute=ai_institute, code='AI&ML', name='AI and ML')
+        ai_auditor = Auditor.objects.create(name='AI auditor', institute=self.cb, dept_name='AI')
+        self.assertEqual(self.save(ai_department, ai_auditor).status_code, 400)
+
+        cse_institute = Institute.objects.create(code='CS', name='CS College')
+        cse_department = Department.objects.create(institute=cse_institute, code='CSE', name='Computer Science')
+        cse_auditor = Auditor.objects.create(
+            name='Cybersecurity auditor', institute=self.cb, dept_name='CSE & CYBERSECURITY'
+        )
+        self.assertEqual(self.save(cse_department, cse_auditor).status_code, 400)
 
     def test_second_auditor_not_from_first_auditors_department(self):
         r = self.save(self.a1, self.ee_cb, self.ee2_cb)
@@ -578,20 +605,159 @@ class AllocationRuleTests(AIAssistantBase):
         self.assertIn('both from EE', r.json()['error'])
         self.assertEqual(self.save(self.a1, self.ee_cb, self.ce_cb).json()['status'], 'success')
 
-    def test_auditor_only_one_department_per_cycle(self):
-        self.assertEqual(self.save(self.a1, self.ce_cb).json()['status'], 'success')
-        r = self.save(self.a2, self.ce_cb)
-        self.assertEqual(r.status_code, 400)
-        self.assertIn('already assigned to CA - ME', r.json()['error'])
-        # Re-saving the same department is fine
-        self.assertEqual(self.save(self.a1, self.ce_cb).json()['status'], 'success')
+    def test_auditor_can_cover_each_of_two_other_colleges_once(self):
+        self.assertEqual(self.save(self.a2, self.ce_cb).json()['status'], 'success')
+        self.assertEqual(self.save(self.c1_dept, self.ce_cb).json()['status'], 'success')
+        same_college = self.save(self.a1, self.ce_cb)
+        self.assertEqual(same_college.status_code, 400)
+        self.assertIn('one department in each other college', same_college.json()['error'])
+        third_college = self.save(self.d1_dept, self.ce_cb)
+        self.assertEqual(third_college.status_code, 400)
+        self.assertIn('two other colleges', third_college.json()['error'])
+        self.assertEqual(self.save(self.a2, self.ce_cb).json()['status'], 'success')
+
+    def test_auto_allotment_preview_and_apply(self):
+        preview = self.post('/api/assignments/auto-allot/', {
+            'action': 'preview', 'cycle_id': self.cur.id
+        })
+        self.assertEqual(preview.status_code, 200)
+        proposed = preview.json()['proposed']
+        self.assertTrue(proposed)
+        self.assertEqual(AuditAssignment.objects.filter(cycle=self.cur).count(), 1)
+        for item in proposed:
+            dept = Department.objects.get(id=item['department_id'])
+            a1 = Auditor.objects.get(id=item['auditor_1_id'])
+            a2 = Auditor.objects.get(id=item['auditor_2_id'])
+            self.assertNotEqual(a1.institute_id, dept.institute_id)
+            self.assertNotEqual(a2.institute_id, dept.institute_id)
+            self.assertNotEqual(a1.id, a2.id)
+
+        applied = self.post('/api/assignments/auto-allot/', {
+            'action': 'apply', 'cycle_id': self.cur.id, 'proposed': proposed
+        })
+        self.assertEqual(applied.status_code, 200, applied.content)
+        self.assertEqual(applied.json()['status'], 'success')
+        self.assertTrue(AuditAssignment.objects.filter(cycle=self.cur).count() > 1)
+
+    def test_auto_allotment_uses_unique_auditors_from_mkce_before_repeating(self):
+        Auditor.objects.update(is_active=False)
+        mkce = Institute.objects.create(code='MKCE', name='M. Kumarasamy College of Engineering')
+        target_a = Department.objects.create(institute=self.ca, code='AI', name='AI A')
+        target_b = Department.objects.create(institute=self.cb, code='IT', name='IT B')
+        cycle = AuditCycle.objects.create(
+            academic_year='2026-2027', semester='Odd', cycle_type='Mid-Semester'
+        )
+        pool = [
+            Auditor.objects.create(name='College C ME', institute=self.cc, dept_name='ME'),
+            Auditor.objects.create(name='College C EE', institute=self.cc, dept_name='EE'),
+            Auditor.objects.create(name='MKCE Civil', institute=mkce, dept_name='CIVIL'),
+            Auditor.objects.create(name='MKCE EEE', institute=mkce, dept_name='EEE'),
+        ]
+        self.prefill_auto_allot_cycle(cycle, [target_a, target_b])
+
+        preview = self.post('/api/assignments/auto-allot/', {
+            'action': 'preview', 'cycle_id': cycle.id
+        })
+        self.assertEqual(preview.status_code, 200)
+        proposed = preview.json()['proposed']
+        used_ids = [
+            auditor_id
+            for item in proposed
+            for auditor_id in (item['auditor_1_id'], item['auditor_2_id'])
+        ]
+        self.assertEqual({item['department_id'] for item in proposed}, {target_a.id, target_b.id})
+        self.assertCountEqual(used_ids, [auditor.id for auditor in pool])
+        self.assertTrue(any(auditor_id in {aud.id for aud in pool if aud.institute_id == mkce.id} for auditor_id in used_ids))
+        self.assertFalse(any(item['auditor_id'] in used_ids for item in preview.json()['repeated_auditors']))
+
+    def test_auto_allotment_reuses_an_auditor_only_when_unique_pool_is_exhausted(self):
+        Auditor.objects.update(is_active=False)
+        mkce = Institute.objects.create(code='MKCE', name='M. Kumarasamy College of Engineering')
+        target_a = Department.objects.create(institute=self.ca, code='AI', name='AI A')
+        target_b = Department.objects.create(institute=self.cb, code='IT', name='IT B')
+        cycle = AuditCycle.objects.create(
+            academic_year='2026-2027', semester='Odd', cycle_type='Mid-Semester'
+        )
+        pool = [
+            Auditor.objects.create(name='MKCE ME', institute=mkce, dept_name='ME'),
+            Auditor.objects.create(name='MKCE EE', institute=mkce, dept_name='EE'),
+            Auditor.objects.create(name='MKCE Civil', institute=mkce, dept_name='CIVIL'),
+        ]
+        self.prefill_auto_allot_cycle(cycle, [target_a, target_b])
+
+        preview = self.post('/api/assignments/auto-allot/', {
+            'action': 'preview', 'cycle_id': cycle.id
+        })
+        self.assertEqual(preview.status_code, 200)
+        proposed = preview.json()['proposed']
+        used_ids = [
+            auditor_id
+            for item in proposed
+            for auditor_id in (item['auditor_1_id'], item['auditor_2_id'])
+        ]
+        self.assertEqual({item['department_id'] for item in proposed}, {target_a.id, target_b.id})
+        self.assertEqual(set(used_ids), {auditor.id for auditor in pool})
+        self.assertEqual(len(used_ids), 4)
+        repeated_pool_auditors = [
+            item for item in preview.json()['repeated_auditors']
+            if item['auditor_id'] in {auditor.id for auditor in pool}
+        ]
+        self.assertEqual(len(repeated_pool_auditors), 1)
+
+    def test_auto_allotment_reports_auditors_assigned_in_both_other_colleges(self):
+        repeated = Auditor.objects.create(name='Repeated Auditor', institute=self.ca, dept_name='EE')
+        AuditAssignment.objects.filter(cycle=self.cur, department=self.b1).update(auditor_1=repeated)
+        AuditAssignment.objects.create(cycle=self.cur, department=self.c1_dept, auditor_1=repeated)
+        preview = self.post('/api/assignments/auto-allot/', {
+            'action': 'preview', 'cycle_id': self.cur.id
+        })
+        self.assertEqual(preview.status_code, 200)
+        matches = [
+            auditor for auditor in preview.json()['repeated_auditors']
+            if auditor['auditor_id'] == repeated.id
+        ]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(len(matches[0]['assignments']), 2)
+
+    def test_saved_auditor_selection_cannot_be_changed_without_reset(self):
+        self.assertEqual(self.save(self.a2, self.ce_cb).json()['status'], 'success')
+        changed = self.save(self.a2, self.ee_cb)
+        self.assertEqual(changed.status_code, 409)
+        self.assertIn('locked', changed.json()['error'])
+
+    def test_saved_auditor_selection_can_be_edited_with_admin_password(self):
+        self.assertEqual(self.save(self.a2, self.ce_cb).json()['status'], 'success')
+        wrong_password = self.post('/api/assignments/save/', {
+            'department_id': self.a2.id,
+            'cycle_id': self.cur.id,
+            'auditor_1_id': self.me_cb.id,
+            'auditor_1_criteria': ['C1'],
+            'edit_password': 'wrong',
+        })
+        self.assertEqual(wrong_password.status_code, 403)
+
+        updated = self.post('/api/assignments/save/', {
+            'department_id': self.a2.id,
+            'cycle_id': self.cur.id,
+            'auditor_1_id': self.me_cb.id,
+            'auditor_1_criteria': ['C1'],
+            'edit_password': 'pw',
+        })
+        self.assertEqual(updated.status_code, 200, updated.content)
+        assignment = AuditAssignment.objects.get(cycle=self.cur, department=self.a2)
+        self.assertEqual(assignment.auditor_1_id, self.me_cb.id)
+        self.assertEqual(assignment.auditor_1_criteria, ['C1'])
 
 
 class AllocationResetTests(AIAssistantBase):
     def test_reset_frees_auditor_and_keeps_scores(self):
         self.login(self.admin)
         a = AuditAssignment.objects.get(cycle=self.cur, department=self.b1)
-        r = self.post('/api/assignments/reset/', {'department_id': self.b1.id, 'cycle_id': self.cur.id})
+        denied = self.post('/api/assignments/reset/', {'department_id': self.b1.id, 'cycle_id': self.cur.id})
+        self.assertEqual(denied.status_code, 403)
+        r = self.post('/api/assignments/reset/', {
+            'department_id': self.b1.id, 'cycle_id': self.cur.id, 'password': 'pw'
+        })
         self.assertEqual(r.json()['status'], 'success')
         self.assertTrue(r.json()['removed'])
         self.assertEqual(r.json()['scores_kept'], 1)
@@ -607,3 +773,53 @@ class AllocationResetTests(AIAssistantBase):
         r = self.post('/api/assignments/reset/', {'department_id': self.b1.id, 'cycle_id': self.cur.id})
         self.assertEqual(r.status_code, 403)
         self.assertTrue(AuditAssignment.objects.filter(cycle=self.cur, department=self.b1).exists())
+
+    def test_full_reset_removes_cycle_assignments_and_keeps_scores_and_atrs(self):
+        self.login(self.admin)
+        other_cycle_assignment = AuditAssignment.objects.create(
+            cycle=self.prev, department=self.a1, auditor_1=self.auditor
+        )
+        denied = self.post('/api/assignments/reset-all/', {'cycle_id': self.cur.id})
+        self.assertEqual(denied.status_code, 403)
+        response = self.post('/api/assignments/reset-all/', {'cycle_id': self.cur.id, 'password': 'pw'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+        self.assertEqual(response.json()['assignments_removed'], 1)
+        self.assertFalse(AuditAssignment.objects.filter(cycle=self.cur).exists())
+        self.assertTrue(AuditAssignment.objects.filter(id=other_cycle_assignment.id).exists())
+        self.assertTrue(AuditEvaluation.objects.filter(cycle=self.cur, department=self.b1).exists())
+        self.assertTrue(ActionTakenReport.objects.filter(pk=self.atr_b1.pk).exists())
+
+    def test_full_reset_admin_only(self):
+        self.login(self.hod_b1)
+        response = self.post('/api/assignments/reset-all/', {'cycle_id': self.cur.id})
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(AuditAssignment.objects.filter(cycle=self.cur).exists())
+
+
+class AuditorExcelExportTests(AIAssistantBase):
+    def test_admin_can_download_auditor_directory_without_credentials(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        self.login(self.admin)
+        Auditor.objects.create(name='=1+1', institute=self.ca, dept_name='EE', email='record@example.test')
+        response = self.client.get('/api/auditors/export/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        sheet = load_workbook(BytesIO(response.content), read_only=True).active
+        rows = list(sheet.iter_rows(values_only=True))
+        self.assertEqual(
+            rows[0],
+            ('Sl. No.', 'Name', 'Institute', 'Department', 'Designation', 'Experience', 'Email', 'Status')
+        )
+        self.assertIn("'=1+1", [row[1] for row in rows[1:]])
+        self.assertNotIn('Password', rows[0])
+
+    def test_auditor_directory_export_admin_only(self):
+        self.login(self.hod_b1)
+        response = self.client.get('/api/auditors/export/')
+        self.assertEqual(response.status_code, 403)

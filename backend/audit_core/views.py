@@ -5,12 +5,17 @@ from html import escape as html_escape
 from django.conf import settings
 import csv
 import io
+from itertools import combinations
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.db import transaction
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from .models import (
     Institute, Department, Auditor, AuditCycle, Criterion,
     MetricItem, AuditAssignment, AuditEvaluation, ActionTakenReport, AuditSettings
@@ -1146,11 +1151,51 @@ def assignments_list(request):
 
 def discipline(code):
     """Department discipline without the specialisation, e.g. 'ECE (VLSI)' -> 'ECE', 'CSE (CS)' -> 'CSE'"""
-    return (code or '').split('(')[0].strip().upper()
+    value = (code or '').split('(')[0].strip().upper()
+    if value in {'AI', 'AI&DS', 'AI&ML'}:
+        return 'AI'
+    if value.startswith('CSE &'):
+        return 'CSE'
+    return value
 
 
 def auditor_discipline(aud):
     return discipline(aud.dept_name or (aud.department.code if aud.department_id else ''))
+
+
+def assignment_error(dept, cycle_id, a1, a2, exclude_department_id=None):
+    for label, auditor in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if auditor and auditor.institute_id == dept.institute_id:
+            return f"{label} ({auditor.name}) belongs to {dept.institute.code} and cannot audit a {dept.institute.code} department."
+    if a1 and a2 and a1.id == a2.id:
+        return 'Auditor 1 and Auditor 2 must be different people.'
+    for label, auditor in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if auditor and auditor_discipline(auditor) and auditor_discipline(auditor) == discipline(dept.code):
+            return f"{label} ({auditor.name}) is from {auditor.dept_name} and cannot audit a {dept.code} department of any college."
+    if a1 and a2 and auditor_discipline(a1) and auditor_discipline(a1) == auditor_discipline(a2):
+        return f"Auditor 1 and Auditor 2 are both from {a1.dept_name}. Choose a second auditor from another department."
+
+    for label, auditor in (('Auditor 1', a1), ('Auditor 2', a2)):
+        if not auditor:
+            continue
+        other_assignments = AuditAssignment.objects.filter(cycle_id=cycle_id).exclude(
+            department_id=exclude_department_id or dept.id
+        ).filter(Q(auditor_1=auditor) | Q(auditor_2=auditor)).select_related('department__institute', 'department')
+        colleges = set(other_assignments.values_list('department__institute_id', flat=True))
+        same_college = other_assignments.filter(department__institute_id=dept.institute_id).first()
+        if same_college:
+            return (
+                f"{label} ({auditor.name}) is already assigned to {same_college.department.institute.code} - "
+                f"{same_college.department.code} in this audit cycle. Each auditor may take only one "
+                "department in each other college."
+            )
+        if len(colleges) >= 2:
+            return f"{label} ({auditor.name}) is already assigned in two other colleges in this audit cycle."
+    return None
+
+
+def verify_admin_password(user, password):
+    return isinstance(password, str) and bool(password) and user.check_password(password)
 
 
 @role_required('Admin')
@@ -1178,36 +1223,22 @@ def save_assignment(request):
     if not dept:
         return JsonResponse({'error': 'Department not found'}, status=404)
 
-    # Deployment rule: auditors must not audit departments of their own college
-    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
-        if aud and aud.institute_id == dept.institute_id:
+    existing = AuditAssignment.objects.filter(cycle_id=cycle_id, department_id=dept_id).first()
+    if existing and (
+        existing.auditor_1_id != (a1.id if a1 else None) or
+        existing.auditor_2_id != (a2.id if a2 else None)
+    ):
+        edit_password = data.get('edit_password')
+        if not edit_password:
             return JsonResponse({
-                'error': f"{label} ({aud.name}) belongs to {dept.institute.code} and cannot audit a {dept.institute.code} department."
-            }, status=400)
-    if a1 and a2 and a1.id == a2.id:
-        return JsonResponse({'error': 'Auditor 1 and Auditor 2 must be different people.'}, status=400)
-    # No auditor of the same department (discipline) in any college
-    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
-        if aud and auditor_discipline(aud) and auditor_discipline(aud) == discipline(dept.code):
-            return JsonResponse({
-                'error': f"{label} ({aud.name}) is from {aud.dept_name} and cannot audit a {dept.code} department of any college."
-            }, status=400)
-    # The two auditors of a department come from different departments
-    if a1 and a2 and auditor_discipline(a1) and auditor_discipline(a1) == auditor_discipline(a2):
-        return JsonResponse({
-            'error': f"Auditor 1 and Auditor 2 are both from {a1.dept_name}. Choose a second auditor from another department."
-        }, status=400)
-    # An auditor audits only one department per audit cycle
-    for label, aud in (('Auditor 1', a1), ('Auditor 2', a2)):
-        if not aud:
-            continue
-        other = (AuditAssignment.objects.filter(cycle_id=cycle_id).exclude(department_id=dept_id)
-                 .filter(Q(auditor_1=aud) | Q(auditor_2=aud)).select_related('department__institute').first())
-        if other:
-            return JsonResponse({
-                'error': f"{label} ({aud.name}) is already assigned to {other.department.institute.code} - "
-                         f"{other.department.code} in this audit cycle."
-            }, status=400)
+                'error': 'Saved auditor selections are locked. Use Edit and confirm with the current Admin password to change them.'
+            }, status=409)
+        if not verify_admin_password(request.user, edit_password):
+            return JsonResponse({'error': 'Current Admin password is incorrect.'}, status=403)
+
+    error = assignment_error(dept, cycle_id, a1, a2, exclude_department_id=dept_id)
+    if error:
+        return JsonResponse({'error': error}, status=400)
     if not a1 and not a2 and not AuditAssignment.objects.filter(department_id=dept_id, cycle_id=cycle_id).exists():
         return JsonResponse({'error': 'Choose at least one auditor before saving.'}, status=400)
 
@@ -1242,6 +1273,8 @@ def reset_assignment(request):
         dept_id, cycle_id = int(data.get('department_id')), int(data.get('cycle_id'))
     except (TypeError, ValueError):
         return JsonResponse({'error': 'department_id and cycle_id required'}, status=400)
+    if not verify_admin_password(request.user, data.get('password')):
+        return JsonResponse({'error': 'Current Admin password is incorrect.'}, status=403)
     dept = Department.objects.select_related('institute').filter(id=dept_id).first()
     if not dept or not AuditCycle.objects.filter(id=cycle_id).exists():
         return JsonResponse({'error': 'Department or audit cycle not found'}, status=404)
@@ -1249,6 +1282,294 @@ def reset_assignment(request):
     scored = AuditEvaluation.objects.filter(department_id=dept_id, cycle_id=cycle_id, grade__in=['Y', 'C', 'W', 'D']).count()
     return JsonResponse({'status': 'success', 'removed': bool(deleted), 'scores_kept': scored,
                          'department': f"{dept.institute.code} - {dept.code}"})
+
+
+@role_required('Admin')
+def reset_all_assignments(request):
+    """Remove all auditor assignments for a cycle while preserving scores and ATRs."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    try:
+        data = json_body(request)
+        cycle_id = int(data.get('cycle_id'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'cycle_id required'}, status=400)
+    if not verify_admin_password(request.user, data.get('password')):
+        return JsonResponse({'error': 'Current Admin password is incorrect.'}, status=403)
+    if not AuditCycle.objects.filter(id=cycle_id).exists():
+        return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+
+    assignments = AuditAssignment.objects.filter(cycle_id=cycle_id)
+    removed = assignments.count()
+    assignments.delete()
+    scores_kept = AuditEvaluation.objects.filter(
+        cycle_id=cycle_id, grade__in=['Y', 'C', 'W', 'D']
+    ).count()
+    return JsonResponse({
+        'status': 'success',
+        'assignments_removed': removed,
+        'scores_kept': scores_kept,
+    })
+
+
+def build_auto_allotment(cycle_id):
+    """Allocate unique auditors first, reusing them only when no unique pair remains."""
+    departments = list(Department.objects.select_related('institute').order_by('institute__code', 'code'))
+    auditors = list(Auditor.objects.select_related('institute').order_by('id'))
+    active_auditors = [auditor for auditor in auditors if auditor.is_active]
+    active_auditors_by_institute = {}
+    for auditor in active_auditors:
+        if auditor.institute_id:
+            active_auditors_by_institute[auditor.institute_id] = (
+                active_auditors_by_institute.get(auditor.institute_id, 0) + 1
+            )
+    existing_assignments = list(
+        AuditAssignment.objects.filter(cycle_id=cycle_id)
+        .select_related('department__institute', 'auditor_1__institute', 'auditor_2__institute')
+        .order_by('department_id')
+    )
+    existing_by_department = {assignment.department_id: assignment for assignment in existing_assignments}
+    auditor_load = {auditor.id: [] for auditor in auditors}
+
+    def add_load(auditor, dept):
+        if auditor:
+            auditor_load.setdefault(auditor.id, []).append({
+                'department_id': dept.id,
+                'department_code': dept.code,
+                'institute_id': dept.institute_id,
+                'institute_code': dept.institute.code,
+            })
+
+    for assignment in existing_assignments:
+        add_load(assignment.auditor_1, assignment.department)
+        add_load(assignment.auditor_2, assignment.department)
+
+    pending = []
+    for dept in departments:
+        assignment = existing_by_department.get(dept.id)
+        a1 = assignment.auditor_1 if assignment else None
+        a2 = assignment.auditor_2 if assignment else None
+        if not a1 or not a2:
+            pending.append((dept, a1, a2))
+
+    proposed = []
+    remaining = list(pending)
+    unfilled = []
+
+    def prior_department_load(auditor, dept):
+        return sum(
+            load['department_id'] != dept.id
+            for load in auditor_load.get(auditor.id, [])
+        )
+
+    def can_audit(auditor, dept):
+        if not auditor.is_active:
+            return False
+        if auditor.institute_id == dept.institute_id:
+            return False
+        if auditor_discipline(auditor) and auditor_discipline(auditor) == discipline(dept.code):
+            return False
+        loads = auditor_load.get(auditor.id, [])
+        colleges = {load['institute_id'] for load in loads}
+        return dept.institute_id not in colleges and len(colleges) < 2
+
+    while remaining:
+        options_by_department = []
+        for dept, fixed_a1, fixed_a2 in remaining:
+            a1_options = [fixed_a1] if fixed_a1 else [aud for aud in active_auditors if can_audit(aud, dept)]
+            a2_options = [fixed_a2] if fixed_a2 else [aud for aud in active_auditors if can_audit(aud, dept)]
+            pairs = []
+            if fixed_a1 and fixed_a2:
+                potential_pairs = [(fixed_a1, fixed_a2)]
+            elif fixed_a1:
+                potential_pairs = [(fixed_a1, candidate) for candidate in a2_options]
+            elif fixed_a2:
+                potential_pairs = [(candidate, fixed_a2) for candidate in a1_options]
+            else:
+                potential_pairs = list(combinations(a1_options, 2))
+            pairs = []
+            for a1, a2 in potential_pairs:
+                if a1.id == a2.id or (
+                    auditor_discipline(a1) and
+                    auditor_discipline(a1) == auditor_discipline(a2)
+                ):
+                    continue
+                reuse_count = prior_department_load(a1, dept) + prior_department_load(a2, dept)
+                pairs.append((a1, a2, reuse_count))
+            options_by_department.append((dept, fixed_a1, fixed_a2, pairs))
+
+        reuse_levels = [
+            reuse_count
+            for _, _, _, pairs in options_by_department
+            for _, _, reuse_count in pairs
+        ]
+        if not reuse_levels:
+            unfilled.extend(dept for dept, _, _, _ in options_by_department)
+            break
+
+        best_reuse_count = min(reuse_levels)
+        options_by_department = [
+            (
+                len(eligible_pairs),
+                dept,
+                fixed_a1,
+                fixed_a2,
+                eligible_pairs,
+            )
+            for dept, fixed_a1, fixed_a2, pairs in options_by_department
+            if (eligible_pairs := [
+                (a1, a2)
+                for a1, a2, reuse_count in pairs
+                if reuse_count == best_reuse_count
+            ])
+        ]
+        options_by_department.sort(key=lambda item: (item[0], item[1].institute.code, item[1].code))
+        _, dept, fixed_a1, fixed_a2, pairs = options_by_department[0]
+
+        def pair_priority(pair):
+            a1, a2 = pair
+            used_by_institute = {}
+            for auditor in auditors:
+                if auditor.institute_id and auditor_load.get(auditor.id):
+                    used_by_institute[auditor.institute_id] = (
+                        used_by_institute.get(auditor.institute_id, 0) + 1
+                    )
+            for auditor in (a1, a2):
+                if auditor.institute_id and not auditor_load.get(auditor.id):
+                    used_by_institute[auditor.institute_id] = (
+                        used_by_institute.get(auditor.institute_id, 0) + 1
+                    )
+            utilization = sorted(
+                used_by_institute.get(institute_id, 0) / capacity
+                for institute_id, capacity in active_auditors_by_institute.items()
+            )
+            return (
+                a1.institute_id == a2.institute_id,
+                tuple(utilization),
+                len(auditor_load.get(a1.id, [])) + len(auditor_load.get(a2.id, [])),
+                a1.id,
+                a2.id,
+            )
+
+        remaining.remove((dept, fixed_a1, fixed_a2))
+        a1, a2 = min(pairs, key=pair_priority)
+        if not fixed_a1:
+            add_load(a1, dept)
+        if not fixed_a2:
+            add_load(a2, dept)
+        proposed.append({
+            'department_id': dept.id,
+            'department_code': dept.code,
+            'institute_code': dept.institute.code,
+            'auditor_1_id': a1.id,
+            'auditor_1_name': a1.name,
+            'auditor_2_id': a2.id,
+            'auditor_2_name': a2.name,
+        })
+
+    repeated = []
+    auditor_by_id = {auditor.id: auditor for auditor in auditors}
+    for auditor_id, loads in auditor_load.items():
+        if len(loads) > 1:
+            auditor = auditor_by_id[auditor_id]
+            repeated.append({
+                'auditor_id': auditor_id,
+                'name': auditor.name,
+                'home_college': auditor.institute.code if auditor.institute else '',
+                'assignments': [
+                    f"{load['institute_code']} - {load['department_code']}" for load in loads
+                ],
+            })
+    repeated.sort(key=lambda item: item['name'].casefold())
+    return {
+        'proposed': proposed,
+        'unfilled': [
+            {
+                'department_id': dept.id,
+                'department_code': dept.code,
+                'institute_code': dept.institute.code,
+            }
+            for dept in unfilled
+        ],
+        'repeated_auditors': repeated,
+    }
+
+
+@role_required('Admin')
+def auto_allot_assignments(request):
+    """Preview or atomically apply valid auditor assignments for unfilled departments."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    data = json_body(request)
+    action = data.get('action')
+    try:
+        cycle_id = int(data.get('cycle_id'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'cycle_id required'}, status=400)
+    if not AuditCycle.objects.filter(id=cycle_id).exists():
+        return JsonResponse({'error': 'Audit cycle not found'}, status=404)
+
+    if action == 'preview':
+        return JsonResponse({'status': 'success', **build_auto_allotment(cycle_id)})
+    if action != 'apply':
+        return JsonResponse({'error': 'action must be preview or apply'}, status=400)
+
+    proposed = data.get('proposed')
+    if not isinstance(proposed, list) or not proposed:
+        return JsonResponse({'error': 'There are no proposed assignments to apply.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            seen_departments = set()
+            for item in proposed:
+                if not isinstance(item, dict):
+                    raise ValueError('Invalid proposed assignment.')
+                dept_id = int(item.get('department_id'))
+                if dept_id in seen_departments:
+                    raise ValueError('A department appears more than once in the proposed assignments.')
+                seen_departments.add(dept_id)
+                dept = Department.objects.select_related('institute').filter(id=dept_id).first()
+                if not dept:
+                    raise ValueError('A proposed department no longer exists.')
+                existing = AuditAssignment.objects.filter(cycle_id=cycle_id, department_id=dept_id).first()
+                a1 = Auditor.objects.filter(id=item.get('auditor_1_id'), is_active=True).first()
+                a2 = Auditor.objects.filter(id=item.get('auditor_2_id'), is_active=True).first()
+                if not a1 or not a2:
+                    raise ValueError('A proposed auditor no longer exists or is inactive.')
+                if existing and (
+                    (existing.auditor_1_id and existing.auditor_1_id != a1.id) or
+                    (existing.auditor_2_id and existing.auditor_2_id != a2.id)
+                ):
+                    raise ValueError(
+                        f"{dept.institute.code} - {dept.code} already has an auditor assignment. "
+                        "Refresh the preview before applying."
+                    )
+                error = assignment_error(dept, cycle_id, a1, a2, exclude_department_id=dept_id)
+                if error:
+                    raise ValueError(error)
+                combined_criteria = sorted(set((existing.assigned_criteria if existing else []) or []))
+                AuditAssignment.objects.update_or_create(
+                    department_id=dept_id,
+                    cycle_id=cycle_id,
+                    defaults={
+                        'auditor_1': a1,
+                        'auditor_2': a2,
+                        'auditor_1_criteria': existing.auditor_1_criteria if existing else [],
+                        'auditor_2_criteria': existing.auditor_2_criteria if existing else [],
+                        'assigned_criteria': combined_criteria or ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'],
+                        'deployment_check': 'Deployment verified',
+                        'status': existing.status if existing else 'Not started',
+                    }
+                )
+    except (TypeError, ValueError) as error:
+        return JsonResponse({'error': str(error)}, status=400)
+
+    result = build_auto_allotment(cycle_id)
+    return JsonResponse({
+        'status': 'success',
+        'assignments_created': len(proposed),
+        'repeated_auditors': result['repeated_auditors'],
+    })
 
 
 @role_required('Admin')
@@ -1380,6 +1701,51 @@ class SafeCsvWriter:
         if not row:
             self.mask = []
         self._w.writerow([('Hidden' if i < len(self.mask) and self.mask[i] else csv_safe(v)) for i, v in enumerate(row)])
+
+
+@role_required('Admin')
+def download_auditors_excel(request):
+    """Download the auditor directory for administrative record keeping."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Auditors'
+    headers = ['Sl. No.', 'Name', 'Institute', 'Department', 'Designation', 'Experience', 'Email', 'Status']
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+
+    auditors = Auditor.objects.select_related('institute').order_by('institute__code', 'dept_name', 'name')
+    for index, auditor in enumerate(auditors, start=1):
+        values = [
+            auditor.sl_no or index,
+            auditor.name,
+            auditor.institute.code if auditor.institute else '',
+            auditor.dept_name,
+            auditor.designation,
+            auditor.experience,
+            auditor.email,
+            'Active' if auditor.is_active else 'Inactive',
+        ]
+        row_number = sheet.max_row + 1
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row_number, column=column, value=csv_safe(value))
+            if isinstance(cell.value, str):
+                cell.data_type = 's'
+
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = sheet.dimensions
+    for column, width in enumerate((10, 28, 14, 18, 28, 18, 34, 12), start=1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+
+    output = io.BytesIO()
+    workbook.save(output)
+    response = HttpResponse(
+        output.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="Auditor_Directory.xlsx"'
+    return response
 
 
 @role_required('Admin')

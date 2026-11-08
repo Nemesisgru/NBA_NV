@@ -3,7 +3,6 @@ import {
   CheckSquare, Square, Filter, Search, Save, AlertTriangle, 
   ChevronRight, RefreshCw, Eye, Download, Info, CheckCircle2, Paperclip, Loader2
 } from 'lucide-react';
-import useSlidingIndicator from '../hooks/useSlidingIndicator';
 import ColumnPicker from './ColumnPicker';
 import EvidencePanel from './EvidencePanel';
 import { normalizeColumns, sameColumns } from '../auditColumns';
@@ -25,6 +24,12 @@ const limit2 = (v) => {
   return dot === -1 ? s : s.slice(0, dot + 3);
 };
 
+const resizeRemarks = (element) => {
+  if (!element) return;
+  element.style.height = 'auto';
+  element.style.height = `${element.scrollHeight}px`;
+};
+
 export default function CriterionEvaluation({
   criteriaList,
   activeCriterionCode,
@@ -40,6 +45,7 @@ export default function CriterionEvaluation({
 }) {
   const [criterionData, setCriterionData] = useState(null);
   const [metrics, setMetrics] = useState([]);
+  const [criteriaExpanded, setCriteriaExpanded] = useState(false);
   // Set by the backend: Admin, or the auditor allocated this criterion; HODs always view-only
   const [canEdit, setCanEdit] = useState(false);
   const readOnly = !canEdit;
@@ -296,38 +302,51 @@ export default function CriterionEvaluation({
     return rows.filter((m, i) => !m.is_header || (rows[i + 1] && !rows[i + 1].is_header));
   }, [metrics, searchQuery, gradeFilter, onlyFlagged]);
 
-  const { containerRef: critTabsRef, itemRef: critTabRef, indicator: critIndicator } =
-    useSlidingIndicator(activeCriterionCode, [criteriaList.length, userRole]);
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* Criteria Selection Tabs: segmented control with a sliding active pill */}
-      <div ref={critTabsRef} className="seg-tabs">
-        {critIndicator && (
-          <div className="seg-indicator" style={{ left: critIndicator.left, width: critIndicator.width }} />
-        )}
-        {criteriaList.map(c => {
-          const isCurrent = c.code === activeCriterionCode;
-          const isAllocated = !editableCriteria || editableCriteria.includes(c.code);
-          return (
-            <button
-              key={c.code}
-              ref={critTabRef(c.code)}
-              onClick={() => setActiveCriterionCode(c.code)}
-              className={`seg-tab${isCurrent ? ' active' : ''}`}
-            >
-              <span className="seg-code">{c.code}</span>
-              <span>{c.title}</span>
-              <span className="seg-meta">{fmt2(c.max_marks)}M</span>
-              {userRole === 'Auditor' && isAllocated && (
-                <span title="Allocated to you" className="seg-yours">● yours</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+    <div className={`criterion-evaluation-layout${criteriaExpanded ? ' criteria-expanded' : ''}`}>
+      <aside
+        className={`criterion-sidebar${criteriaExpanded ? ' is-expanded' : ' is-collapsed'}`}
+        onMouseEnter={() => setCriteriaExpanded(true)}
+        onMouseLeave={() => setCriteriaExpanded(false)}
+        onFocusCapture={() => setCriteriaExpanded(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setCriteriaExpanded(false);
+        }}
+      >
+        <nav
+          id="criterion-sidebar-list"
+          className="criterion-sidebar-list"
+          aria-label="Audit criteria"
+        >
+          {criteriaList.map(c => {
+            const isCurrent = c.code === activeCriterionCode;
+            const isAllocated = !editableCriteria || editableCriteria.includes(c.code);
+            return (
+              <button
+                key={c.code}
+                onClick={() => setActiveCriterionCode(c.code)}
+                className={`criterion-sidebar-item${isCurrent ? ' active' : ''}`}
+                aria-current={isCurrent ? 'page' : undefined}
+                title={c.title}
+              >
+                <span className="criterion-sidebar-code">{c.code}</span>
+                <span className="criterion-sidebar-label">{c.title}</span>
+                <span className="criterion-sidebar-meta">{fmt2(c.max_marks)}M</span>
+                {userRole === 'Auditor' && (
+                  <span
+                    className={`criterion-sidebar-allocation${isAllocated ? ' assigned' : ''}`}
+                    aria-label={isAllocated ? 'Allocated to you' : 'View only'}
+                  >
+                    {isAllocated ? 'Assigned' : 'View only'}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
 
+      <div className="criterion-evaluation-content">
       {/* Criterion Header Card */}
       <div style={{
         background: 'var(--hero-gradient)',
@@ -597,14 +616,13 @@ export default function CriterionEvaluation({
                         <button
                           type="button"
                           onClick={() => setEvidenceFor(item)}
-                          className="seg-meta"
-                          style={{ cursor: 'pointer', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                          className="seg-meta evidence-trigger"
                           title="View or upload evidence files for this question"
                         >
                           <Paperclip size={11} /> Evidence ({(item.evidence_files || []).length})
                         </button>
                         {item.evidence_mandatory && (
-                          <span className="seg-meta" style={{ color: 'var(--primary)', borderColor: 'var(--primary-border)' }}>Mandatory evidence</span>
+                          <span className="seg-meta mandatory-evidence-badge">Mandatory evidence</span>
                         )}
                       </div>
                     </td>
@@ -718,13 +736,17 @@ export default function CriterionEvaluation({
                     {/* Remarks */}
                     {col.remarks && (
                       <td>
-                        <input
-                          type="text"
+                        <textarea
+                          ref={resizeRemarks}
                           value={ev.auditor_remarks || ''}
-                          onChange={(e) => handleInputChange(item.id, 'auditor_remarks', e.target.value)}
+                          onChange={(e) => {
+                            handleInputChange(item.id, 'auditor_remarks', e.target.value);
+                            resizeRemarks(e.currentTarget);
+                          }}
                           disabled={readOnly}
                           placeholder="Add verification notes..."
-                          style={{ fontSize: '0.775rem', padding: '4px 8px' }}
+                          rows={2}
+                          className="auditor-remarks-input"
                         />
                       </td>
                     )}
@@ -789,6 +811,7 @@ export default function CriterionEvaluation({
           onChanged={fetchCriterion}
         />
       )}
+      </div>
     </div>
   );
 }
