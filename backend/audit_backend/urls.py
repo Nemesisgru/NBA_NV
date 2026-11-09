@@ -14,6 +14,7 @@ import re
 admin_path = settings.AUDIT_ADMIN_PATH
 urlpatterns = [path(admin_path, admin.site.urls)] if settings.AUDIT_ADMIN_ENABLED else []
 urlpatterns += [
+    path('api/qualifiers/', include('qualifier_module.urls')),
     path('api/', include('audit_core.urls')),
     re_path(r'^assets/(?P<path>.*)$', serve, {'document_root': frontend_assets}),
     re_path(r'^(?!%s|api/|assets/).*$' % re.escape(admin_path), frontend_home, name='frontend_home'),

@@ -375,6 +375,12 @@ With `AUDIT_HTTPS=true` only two optional HSTS notes (subdomains, preload list) 
 
 ---
 
+## PSR College Qualifier Workspace
+
+The PSR qualifier workspace keeps checklist and primary-check data separate for each department. Choose a department in the Checklist or Primary Check tab to view and edit its own records. Department rows include UG and PG programs; program tabs contain intake data and any faculty roster present in the source workbook. Excel exports include separate department checklist and primary-check sheets.
+
+The current local `backend/db.sqlite3` includes PSR data imported from the Biomedical Engineering, Civil Engineering, Mechanical Engineering, and Computer Science and Engineering workbooks. This SQLite file is local and git-ignored; importing data into another environment requires applying migrations and importing that environment's source data separately.
+
 ## 🛠️ REST API Reference
 
 All endpoints except `auth/login` require a logged-in session. "Scoped" means non-admins only get their own (HOD) or allocated (Auditor) departments.

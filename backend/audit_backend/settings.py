@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'audit_core',
+    'qualifier_module',
 ]
 
 MIDDLEWARE = [

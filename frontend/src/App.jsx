@@ -10,6 +10,7 @@ import AuditQuestionSetup from './components/AuditQuestionSetup';
 import AIAssistant from './components/AIAssistant';
 import LoginPage from './components/LoginPage';
 import ChangePassword from './components/ChangePassword';
+import QualifierModule from './components/qualifiers/QualifierModule';
 import { Loader2 } from 'lucide-react';
 
 // Tabs each role may open; the backend enforces the same limits on the API
@@ -35,6 +36,7 @@ export default function App() {
   // Logged in with a new / reset password that must be changed before the app opens
   const [pendingUser, setPendingUser] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [viewingQualifiers, setViewingQualifiers] = useState(false);
   const userRole = currentUser?.role; // 'Auditor' | 'HOD' | 'Admin'
 
   // Load reference data (scoped to the user by the backend) and pick the user's starting context
@@ -117,8 +119,12 @@ export default function App() {
     );
   }
 
+  if (viewingQualifiers) {
+    return <QualifierModule onBackToLogin={() => setViewingQualifiers(false)} />;
+  }
+
   if (!loading && !currentUser) {
-    return <LoginPage onLogin={startSession} />;
+    return <LoginPage onLogin={startSession} onOpenQualifiers={() => setViewingQualifiers(true)} />;
   }
 
   if (loading || !bootstrap) {
@@ -235,6 +241,7 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onChangePassword={() => setShowChangePassword(true)}
+        onOpenQualifiers={() => setViewingQualifiers(true)}
       />
       {showChangePassword && (
         <ChangePassword

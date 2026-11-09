@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Building2, Calendar, Filter, ShieldCheck, Download, KeyRound, FileText, LogOut
+  Building2, Calendar, Filter, ShieldCheck, Download, KeyRound, FileText, LogOut, FileSpreadsheet
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import useSlidingIndicator from '../hooks/useSlidingIndicator';
@@ -21,7 +21,8 @@ export default function Navbar({
   userRole,
   currentUser,
   onLogout,
-  onChangePassword
+  onChangePassword,
+  onOpenQualifiers
 }) {
   const filteredDepartments = departments.filter(
     d => !selectedInstitute || d.institute_code === selectedInstitute
@@ -111,6 +112,27 @@ export default function Navbar({
 
         {/* Account actions, top right corner aligned with the title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+          {/* Pre-Visit Qualifiers Module Button */}
+          {onOpenQualifiers && (
+            <button
+              onClick={onOpenQualifiers}
+              className="btn btn-outline btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#10b981',
+                borderColor: 'rgba(16, 185, 129, 0.4)',
+                background: 'rgba(16, 185, 129, 0.08)',
+                fontWeight: 700,
+                fontSize: '0.78rem'
+              }}
+              title="NBA Pre-Visit Qualifiers & Allied Matrix Module"
+            >
+              <FileSpreadsheet size={14} /> Pre-Visit Qualifiers
+            </button>
+          )}
+
           {/* Theme Toggle switch for logged-in sessions across all roles */}
           <div style={{
             display: 'flex',

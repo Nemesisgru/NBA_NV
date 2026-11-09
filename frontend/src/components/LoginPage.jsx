@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ShieldCheck, LogIn, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { ShieldCheck, LogIn, Loader2, Eye, EyeOff, Sparkles, FileSpreadsheet, ArrowRight } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onOpenQualifiers }) {
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -79,6 +79,27 @@ export default function LoginPage({ onLogin }) {
           >
             NBA Tier-I SAR Portal
           </span>
+          <button
+            type="button"
+            onClick={onOpenQualifiers}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              padding: '4px 12px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+            title="Open NBA Pre-Visit Qualifiers & Allied Matrix Module"
+          >
+            <FileSpreadsheet size={14} />
+            Pre-Visit Qualifiers Module
+          </button>
         </div>
 
         {/* Theme Toggle switch */}
@@ -180,6 +201,69 @@ export default function LoginPage({ onLogin }) {
               >
                 <Sparkles size={13} color="var(--primary)" /> Multi-Role Access
               </span>
+            </div>
+
+            {/* Pre-Visit Qualifiers Module Option Card */}
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '16px 18px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'rgba(16, 185, 129, 0.18)',
+                    color: '#10b981',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    NBA Pre-Visit Qualifiers Module
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Google Sheet Matrix • 10 Individual Program Tabs • Dedicated Backend
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenQualifiers}
+                style={{
+                  padding: '9px 14px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)'
+                }}
+              >
+                <span>Enter Pre-Visit Qualifier Data</span>
+                <ArrowRight size={15} />
+              </button>
             </div>
 
           </section>
@@ -293,6 +377,33 @@ export default function LoginPage({ onLogin }) {
               >
                 {submitting ? <Loader2 size={17} className="animate-spin" /> : <LogIn size={17} />}
                 {submitting ? 'Signing in...' : 'Sign in'}
+              </button>
+
+              <div style={{ textAlign: 'center', margin: '4px 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                — or —
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenQualifiers}
+                style={{
+                  padding: '10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10b981',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  fontWeight: 700,
+                  fontSize: '0.825rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'background 0.2s ease'
+                }}
+              >
+                <FileSpreadsheet size={16} />
+                Enter Pre-Visit Qualifiers Data
               </button>
             </form>
 
