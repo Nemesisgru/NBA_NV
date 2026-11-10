@@ -35,7 +35,7 @@ export default function Navbar({
   const tabs = [
     { id: 'criteria', label: (isHod || isCollegeHead) ? "Auditor's Report (C1 - C9)" : 'Criteria Evaluation (C1 - C9)' },
     { id: 'summary', label: 'Criterion Summary (1000M)' },
-    { id: 'dashboard', label: 'KRGI Dashboard' },
+    { id: 'dashboard', label: 'Institution Dashboard' },
     { id: 'atr', label: 'Action Taken Report (ATR)' },
     { id: 'allocations', label: 'Auditor Allocation & Admin' },
     { id: 'questions', label: 'Audit Questions' },
@@ -98,14 +98,14 @@ export default function Navbar({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-                KRGI Academic Audit System
+                Academic Audit System
               </span>
               <span className="badge" style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)', border: '1px solid var(--badge-border)' }}>
                 NBA Tier-I Aligned
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              K. Ramakrishnan Group of Institutions (KRCT • KRCE • MKCE)
+              Academic audit workspace for institutional review and analysis
             </div>
           </div>
         </div>
@@ -211,8 +211,8 @@ export default function Navbar({
               disabled={isHod || isCollegeHead}
               style={{ width: '105px', padding: '6px 8px', fontSize: '0.8rem' }}
             >
-              {institutes.map(inst => (
-                <option key={inst.id} value={inst.code}>{inst.code}</option>
+              {institutes.map((inst, index) => (
+                <option key={inst.id} value={inst.code}>{inst.code || `Institution ${index + 1}`}</option>
               ))}
             </select>
           </div>

@@ -171,10 +171,10 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
                     lineHeight: 1.2
                   }}
                 >
-                  KRGI Academic Audit System
+                  Academic Audit System
                 </h1>
                 <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  K. Ramakrishnan Group of Institutions • KRCT • KRCE • MKCE
+                  Institutional review workflow • Multi-role access
                 </div>
               </div>
             </div>
@@ -439,7 +439,7 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
           borderTop: '1px solid var(--border-subtle)'
         }}
       >
-        KRGI Academic Audit System • NBA Tier-I Self Assessment Report (SAR) Criteria 1-9 • KRCT • KRCE • MKCE
+        Academic Audit System • NBA Tier-I Self Assessment Report (SAR) Criteria 1-9 • Multi-institution review
       </footer>
     </div>
   );

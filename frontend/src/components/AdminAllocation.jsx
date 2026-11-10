@@ -113,8 +113,8 @@ export default function AdminAllocation({
   const [showBulkModal, setShowBulkModal] = useState(false);
 
   // Forms
-  const [newDept, setNewDept] = useState({ institute_code: 'KRCT', code: '', name: '', hod_name: '', hod_email: '' });
-  const [newAuditor, setNewAuditor] = useState({ name: '', email: '', institute_code: 'KRCT', department_name: '', designation: 'Associate Professor', experience: '10 and above' });
+  const [newDept, setNewDept] = useState({ institute_code: '', code: '', name: '', hod_name: '', hod_email: '' });
+  const [newAuditor, setNewAuditor] = useState({ name: '', email: '', institute_code: '', department_name: '', designation: 'Associate Professor', experience: '10 and above' });
   const [bulkCsvText, setBulkCsvText] = useState('');
   const [bulkImportResults, setBulkImportResults] = useState(null);
   const [isBulkImporting, setIsBulkImporting] = useState(false);
@@ -532,7 +532,7 @@ export default function AdminAllocation({
       if (json.status === 'success') {
         alert(`Department ${newDept.code} added successfully! Auto-generated HOD Login:\nUsername: ${json.department.hod_username}\nPassword: ${json.department.hod_initial_password}`);
         setShowAddDeptModal(false);
-        setNewDept({ institute_code: 'KRCT', code: '', name: '', hod_name: '', hod_email: '' });
+        setNewDept({ institute_code: '', code: '', name: '', hod_name: '', hod_email: '' });
         if (onDepartmentAdded) onDepartmentAdded(json.department);
         await fetchAssignments();
       } else {
@@ -556,7 +556,7 @@ export default function AdminAllocation({
       if (json.status === 'success') {
         alert(`Auditor ${newAuditor.name} registered!\nAuto-generated Login:\nUsername: ${json.auditor.username}\nPassword: ${json.auditor.initial_password}`);
         setShowAddAuditorModal(false);
-        setNewAuditor({ name: '', email: '', institute_code: 'KRCT', department_name: '', designation: 'Associate Professor', experience: '10 and above' });
+        setNewAuditor({ name: '', email: '', institute_code: '', department_name: '', designation: 'Associate Professor', experience: '10 and above' });
         if (onAuditorAdded) onAuditorAdded(json.auditor);
       } else {
         alert(json.error || 'Failed to add auditor');
@@ -1214,8 +1214,8 @@ export default function AdminAllocation({
               value={bulkCsvText}
               onChange={(e) => setBulkCsvText(e.target.value)}
               placeholder="Name,Institute,Department,Designation,Experience,Email
-Dr. K. Senthil,KRCT,CSE,Professor,10 and above,senthil.k@krct.ac.in
-Mrs. M. Priya,KRCE,ECE,Associate Professor,5 - 10 years,priya.m@krce.ac.in"
+Dr. K. Senthil,Institution 1,CSE,Professor,10 and above,senthil.k@college.edu
+Mrs. M. Priya,Institution 2,ECE,Associate Professor,5 - 10 years,priya.m@college.edu"
               style={{ fontFamily: 'monospace', fontSize: '0.75rem', marginBottom: '14px' }}
             />
 
@@ -1440,7 +1440,7 @@ Mrs. M. Priya,KRCE,ECE,Associate Professor,5 - 10 years,priya.m@krce.ac.in"
                 <input
                   type="email"
                   required
-                  placeholder="auditor.name@krgi.edu"
+                  placeholder="auditor.name@college.edu"
                   value={newAuditor.email}
                   onChange={(e) => setNewAuditor({ ...newAuditor, email: e.target.value })}
                 />

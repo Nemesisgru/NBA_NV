@@ -298,7 +298,7 @@ export default function CollegeSelectModal({
                   autoFocus
                   value={newCollegeName}
                   onChange={(e) => setNewCollegeName(e.target.value)}
-                  placeholder="e.g. K. Ramakrishnan College of Engineering"
+                  placeholder="e.g. College Name"
                   style={{
                     background: 'var(--bg-input)',
                     border: '1px solid var(--border-input)',
@@ -350,7 +350,7 @@ export default function CollegeSelectModal({
                     type="text"
                     value={newCollegeCode}
                     onChange={(e) => setNewCollegeCode(e.target.value)}
-                    placeholder="e.g. KRCE"
+                    placeholder="e.g. INST"
                     style={{
                       background: 'var(--bg-input)',
                       border: '1px solid var(--border-input)',

@@ -23,7 +23,7 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
   }, [selectedCycleId]);
 
   if (loading && !data) {
-    return <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Loading KRGI Dashboard...</div>;
+    return <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Loading dashboard...</div>;
   }
 
   const institutes = data?.institutes || [];
@@ -49,14 +49,14 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
             <span className="badge" style={{ background: 'var(--primary)', color: '#fff', padding: '4px 10px', fontWeight: 800 }}>
-              KRGI GROUP DASHBOARD
+              INSTITUTION DASHBOARD
             </span>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               Academic Audit Cross-Department Analytics
             </h2>
           </div>
           <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-            Multi-institutional comparison across KRCT, KRCE, and MKCE. Automatic grade rollup and criterion distribution.
+            Cross-institutional comparison and automatic grade rollup across departments and criteria.
           </p>
         </div>
 
@@ -71,9 +71,9 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: '20px'
       }}>
-        {institutes.map(inst => (
+        {institutes.map((inst, index) => (
           <div
-            key={inst.institute_code}
+            key={inst.institute_code || `institution-${index}`}
             style={{
               background: 'var(--bg-card)',
               border: '1px solid var(--border-subtle)',
@@ -90,14 +90,14 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
               left: '0',
               right: '0',
               height: '4px',
-              background: inst.institute_code === 'KRCT' ? 'var(--primary)' : (inst.institute_code === 'KRCE' ? '#06b6d4' : '#10b981')
+              background: ['var(--primary)', '#06b6d4', '#10b981', '#f59e0b'][index % 4]
             }} />
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Building size={20} color="var(--primary)" />
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  {inst.institute_code}
+                  {inst.institute_code || `Institution ${index + 1}`}
                 </h3>
               </div>
               <span className={`badge badge-${(inst.grade || 'd').toLowerCase()}`} style={{ fontSize: '0.9rem', padding: '3px 12px' }}>
@@ -106,7 +106,7 @@ export default function KRGIDashboard({ selectedCycleId, onSelectDepartment }) {
             </div>
 
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              {inst.institute_name}
+              {inst.institute_name || `Institution ${index + 1}`}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>

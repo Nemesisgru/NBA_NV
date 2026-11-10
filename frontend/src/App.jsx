@@ -29,7 +29,7 @@ export default function App() {
   // Global State
   const [activeTab, setActiveTab] = useState('criteria');
   const [activeCriterionCode, setActiveCriterionCode] = useState('C1');
-  const [selectedInstitute, setSelectedInstitute] = useState('KRCT');
+  const [selectedInstitute, setSelectedInstitute] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -54,7 +54,7 @@ export default function App() {
       const data = await res.json();
 
       let cycleId = data.active_cycle_id || data.cycles[0]?.id;
-      let dept = data.departments.find(d => d.institute_code === 'KRCT') || data.departments[0];
+      let dept = data.departments[0];
       let tab = 'criteria';
       let criterion = 'C1';
 
@@ -151,7 +151,7 @@ export default function App() {
         }}>
           <Loader2 size={30} className="animate-spin" color="#fff" />
         </div>
-        <h2 style={{ fontWeight: 800, fontSize: '1.25rem' }}>KRGI Academic Audit System</h2>
+        <h2 style={{ fontWeight: 800, fontSize: '1.25rem' }}>Academic Audit System</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Loading NBA Tier-I audit matrices and rubrics...</p>
       </div>
     );
@@ -386,7 +386,7 @@ export default function App() {
         fontSize: '0.775rem',
         color: '#64748b'
       }}>
-        KRGI Academic Audit System • Aligned with NBA Tier-I Self Assessment Report (SAR) Criteria 1-9 • K. Ramakrishnan Group of Institutions
+        Academic Audit System • Aligned with NBA Tier-I Self Assessment Report (SAR) Criteria 1-9
       </footer>
 
     </div>
