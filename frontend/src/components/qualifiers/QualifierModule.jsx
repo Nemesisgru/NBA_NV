@@ -536,7 +536,11 @@ export default function QualifierModule({ onBackToLogin }) {
               {/* Tab 1: Checklist */}
               {activeTab === 'checklist' && (
                 <ChecklistTab
-                  checklist={selectedDepartmentData?.checklist || data.checklist}
+                  checklist={selectedDepartmentData?.checklist?.length ? selectedDepartmentData.checklist : data.checklist}
+                  programs={(data.programs || []).filter((prog) => {
+                    const dept = (data.departments || []).find((d) => String(d.id) === String(selectedDepartmentId));
+                    return dept ? prog.dept_sno === dept.sno : prog.program_type === 'master';
+                  })}
                   config={selectedDepartmentConfig}
                   onRefresh={() => fetchData()}
                   onUpdateConfig={handleUpdateConfig}

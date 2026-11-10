@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, ShieldCheck, RefreshCw } from 'lucide-react';
 
-export default function ChecklistTab({ checklist = [], config = {}, onRefresh, onUpdateConfig }) {
+export default function ChecklistTab({ checklist = [], config = {}, programs = [], onRefresh, onUpdateConfig }) {
   const tier1Items = checklist.filter((item) => item.tier_type === 'Tier 1');
   const tier2Items = checklist.filter((item) => item.tier_type === 'Tier 2');
 
@@ -201,19 +201,19 @@ export default function ChecklistTab({ checklist = [], config = {}, onRefresh, o
             HOD Qualification Checks across Programs:
           </h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            {['MP', 'AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6'].map((progKey) => {
-              const labelMap = {
-                MP: 'Master Program (CSE)',
-                AL1: 'Allied 1 (AIDS)',
-                AL2: 'Allied 2 (CSE AIML)',
-                AL3: 'Allied 3 (Cyber Sec)',
-                AL4: 'Allied 4 (IT)',
-                AL5: 'Allied 5 (CSBS)',
-                AL6: 'Allied 6',
-              };
+            {programs.length === 0 && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                No programs applied for accreditation for this department yet (2. Departments tab).
+              </span>
+            )}
+            {/* The department's own master and allied programs, with the HOD Ph.D. result computed from its faculty */}
+            {programs.map((prog) => {
+              const isMaster = prog.program_type === 'master';
+              const hodPhd = prog.is_hod_doctorate === 'Yes';
+              const label = `${isMaster ? 'Master Program' : `Allied ${String(prog.program_type).replace('allied_', '')}`} (${prog.program_name})`;
               return (
                 <div
-                  key={progKey}
+                  key={prog.program_key}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '8px',
@@ -225,18 +225,19 @@ export default function ChecklistTab({ checklist = [], config = {}, onRefresh, o
                     gap: '8px',
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{labelMap[progKey]}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{label}</span>
                   <span
                     style={{
                       fontSize: '0.72rem',
                       fontWeight: 700,
                       padding: '2px 6px',
                       borderRadius: '4px',
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      color: 'var(--grade-d)',
+                      background: hodPhd ? 'var(--grade-y-bg)' : 'rgba(239, 68, 68, 0.15)',
+                      color: hodPhd ? 'var(--grade-y)' : 'var(--grade-d)',
                     }}
+                    title={hodPhd ? 'A faculty member marked HOD / Head holds a Ph.D.' : 'No faculty member with HOD / Head in the present designation holds a Ph.D.'}
                   >
-                    HOD PhD: No
+                    HOD PhD: {hodPhd ? 'Yes' : 'No'}
                   </span>
                 </div>
               );

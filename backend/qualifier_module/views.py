@@ -599,6 +599,14 @@ def save_faculty_member(request):
             max_sno = prog.faculty_members.count() + 1
             member = QualifierFacultyMember(program=prog, sno=max_sno)
 
+        # Faculty without an APAAR ID are not entered into the database for evaluation
+        apaar = str(body.get('apaar_id', member.apaar_id) or '').strip()
+        if not apaar:
+            return JsonResponse({"status": "error",
+                                 "message": "APAAR Faculty ID is required. Faculty without an APAAR ID are not added for evaluation."},
+                                status=400)
+        body['apaar_id'] = apaar
+
         normalized_dates = {}
         for field in (
             'date_of_joining',
@@ -717,6 +725,7 @@ def upload_faculty_roster(request):
             )
 
         imported_rows = []
+        skipped_no_apaar = []
         for row_number, values in enumerate(
             sheet.iter_rows(min_row=2, max_col=len(FACULTY_EXCEL_COLUMNS), values_only=True),
             start=2,
@@ -744,6 +753,12 @@ def upload_faculty_roster(request):
                     {"status": "error", "message": f"Faculty name is required on row {row_number}."},
                     status=400,
                 )
+            # Rows without an APAAR ID are left out (not entered for evaluation) and reported
+            if row_data.get('apaar_id', '').endswith('.0') and row_data['apaar_id'][:-2].isdigit():
+                row_data['apaar_id'] = row_data['apaar_id'][:-2]  # Excel stored the ID as a number
+            if not row_data.get('apaar_id'):
+                skipped_no_apaar.append(row_number)
+                continue
             try:
                 for field in (
                     'date_of_joining',
@@ -781,7 +796,11 @@ def upload_faculty_roster(request):
                 )
 
         if not imported_rows:
-            return JsonResponse({"status": "error", "message": "The workbook contains no faculty rows."}, status=400)
+            message = "The workbook contains no faculty rows."
+            if skipped_no_apaar:
+                message = (f"No faculty were imported: {len(skipped_no_apaar)} row(s) have no APAAR Faculty ID "
+                           f"(rows {', '.join(map(str, skipped_no_apaar[:20]))}).")
+            return JsonResponse({"status": "error", "message": message}, status=400)
 
         max_sno = program.faculty_members.order_by('-sno').values_list('sno', flat=True).first() or 0
         faculty_members = []
@@ -802,7 +821,10 @@ def upload_faculty_roster(request):
             recompute_all_qualifiers_for_college(college)
         return JsonResponse({
             "status": "success",
-            "message": f"Imported {len(faculty_members)} faculty members.",
+            "message": f"Imported {len(faculty_members)} faculty members." + (
+                f" Skipped {len(skipped_no_apaar)} row(s) without an APAAR Faculty ID "
+                f"(rows {', '.join(map(str, skipped_no_apaar[:20]))})." if skipped_no_apaar else ''),
+            "skipped_without_apaar": skipped_no_apaar,
             "data": serialize_college_data(college),
         })
     except Exception as e:

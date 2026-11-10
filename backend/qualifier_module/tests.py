@@ -119,6 +119,7 @@ class QualifierCollegeSetupTests(TestCase):
                 "college_id": college_id,
                 "program_key": program.program_key,
                 "faculty_name": "Manually Added Faculty",
+                "apaar_id": "APAAR-M1",
                 "date_of_joining": "01/01/2022",
                 "experience_years": "999",
             }),
@@ -156,6 +157,7 @@ class QualifierCollegeSetupTests(TestCase):
         sheet.append([label for _, label in FACULTY_EXCEL_COLUMNS])
         row = [''] * len(FACULTY_EXCEL_COLUMNS)
         row[1] = 'Valid first row'
+        row[3] = 'APAAR-ROW-2'
         row[7] = 'not-a-date'
         sheet.append(row)
         content = BytesIO()
@@ -267,13 +269,12 @@ class QualifierCollegeSetupTests(TestCase):
         departments[1].department_name = "Second Department"
         departments[1].save()
         for department, status in zip(departments, ("First status", "Second status")):
-            QualifierChecklistItem.objects.create(
+            QualifierChecklistItem.objects.update_or_create(
                 college=college,
                 department=department,
                 sno=1,
                 tier_type="Tier 1",
-                qualifier_text="Approval",
-                current_status=status,
+                defaults=dict(qualifier_text="Approval", current_status=status),
             )
             QualifierPrimaryCheckMetrics.objects.create(
                 college=college,
@@ -346,12 +347,12 @@ class QualifierCollegeSetupTests(TestCase):
         metric = QualifierPrimaryCheckMetrics.objects.create(
             college=college, department=department, years=["2025-2026"]
         )
-        checklist = QualifierChecklistItem.objects.create(
+        checklist, _ = QualifierChecklistItem.objects.update_or_create(
             college=college,
             department=department,
             sno=1,
             tier_type="Tier 1",
-            qualifier_text="Approval",
+            defaults=dict(qualifier_text="Approval"),
         )
         session = client.session
         session["qualifier_college_id"] = college.id
@@ -387,13 +388,12 @@ class QualifierCollegeSetupTests(TestCase):
             years=["2025-2026"],
             ds_students={"2025-2026": 12},
         )
-        QualifierChecklistItem.objects.create(
+        QualifierChecklistItem.objects.update_or_create(
             college=college,
             department=department,
             sno=1,
             tier_type="Tier 1",
-            qualifier_text="Department approval",
-            current_status="Approved",
+            defaults=dict(qualifier_text="Department approval", current_status="Approved"),
         )
         session = client.session
         session["qualifier_college_id"] = college.id
@@ -474,3 +474,56 @@ class QualifierCollegeSetupTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(good_access.status_code, 200)
+
+
+class QualifierApaarAndDepartmentChecklistTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.college = get_or_create_college("APAAR test college")
+        self.program = QualifierProgram.objects.create(
+            college=self.college, program_key="dept_1_master", program_type="master", dept_sno=1,
+            tab_title="Master: Test", program_name="Test Program")
+        session = self.client.session
+        session["qualifier_college_id"] = self.college.id
+        session.save()
+
+    def save(self, **fields):
+        return self.client.post("/api/qualifiers/faculty/save/", data=json.dumps({
+            "college_id": self.college.id, "program_key": self.program.program_key, **fields}),
+            content_type="application/json")
+
+    def test_faculty_without_apaar_is_refused(self):
+        response = self.save(faculty_name="No APAAR", date_of_joining="01/01/2022")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("APAAR", response.json()["message"])
+        self.assertEqual(self.save(faculty_name="With APAAR", apaar_id=" 123456789012 ",
+                                   date_of_joining="01/01/2022").status_code, 200)
+        self.assertEqual(list(QualifierFacultyMember.objects.filter(program=self.program)
+                              .values_list("faculty_name", "apaar_id")), [("With APAAR", "123456789012")])
+
+    def test_upload_skips_rows_without_apaar(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append([label for _, label in FACULTY_EXCEL_COLUMNS])
+        for name, apaar in (("Has ID", 123456789012.0), ("No ID", None)):
+            row = [""] * len(FACULTY_EXCEL_COLUMNS)
+            row[1], row[3], row[7] = name, apaar, "01/01/2022"
+            sheet.append(row)
+        content = BytesIO()
+        workbook.save(content)
+        response = self.client.post("/api/qualifiers/faculty/upload/", data={
+            "college_id": self.college.id, "program_key": self.program.program_key,
+            "file": SimpleUploadedFile("roster.xlsx", content.getvalue())})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["skipped_without_apaar"], [3])
+        self.assertEqual(list(QualifierFacultyMember.objects.filter(program=self.program)
+                              .values_list("faculty_name", "apaar_id")), [("Has ID", "123456789012")])
+
+    def test_every_department_gets_an_evaluated_checklist(self):
+        from .services import recompute_all_qualifiers_for_college
+        recompute_all_qualifiers_for_college(self.college)
+        for department in QualifierDepartment.objects.filter(college=self.college):
+            items = QualifierChecklistItem.objects.filter(college=self.college, department=department)
+            college_items = QualifierChecklistItem.objects.filter(college=self.college, department__isnull=True)
+            self.assertEqual(items.count(), college_items.count())
+            self.assertTrue(all(item.current_status for item in items.filter(tier_type="Tier 1")))

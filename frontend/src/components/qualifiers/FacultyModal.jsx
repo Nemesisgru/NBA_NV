@@ -197,12 +197,13 @@ export default function FacultyModal({ isOpen, onClose, onSave, faculty, program
               </div>
 
               <div>
-                <label style={labelStyle}>APAAR Faculty ID</label>
+                <label style={labelStyle}>APAAR Faculty ID *</label>
                 <input
                   type="text"
+                  required
                   value={form.apaar_id}
                   onChange={(e) => handleChange('apaar_id', e.target.value)}
-                  placeholder="APAAR ID"
+                  placeholder="Required: faculty without an APAAR ID are not evaluated"
                   style={inputStyle}
                 />
               </div>

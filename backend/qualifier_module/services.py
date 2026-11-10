@@ -79,6 +79,30 @@ def init_college_defaults(college):
     sync_programs_from_mappings(college)
 
 
+def ensure_department_checklists(college):
+    """Every department gets its own Tier 1 / Tier 2 checklist (same qualifiers as the college checklist),
+    so the department view is evaluated with that department's Primary Check and programs."""
+    templates = list(QualifierChecklistItem.objects.filter(college=college, department__isnull=True))
+    if not templates:
+        return
+    for department in QualifierDepartment.objects.filter(college=college):
+        existing = set(QualifierChecklistItem.objects.filter(college=college, department=department)
+                       .values_list('tier_type', 'sno'))
+        QualifierChecklistItem.objects.bulk_create([
+            QualifierChecklistItem(
+                college=college, department=department, sno=t.sno, tier_type=t.tier_type,
+                qualifier_text=t.qualifier_text, current_status='', compliance_status='Not Complied',
+                hod_qualification_code=t.hod_qualification_code, hod_qualification_status='No',
+            )
+            for t in templates if (t.tier_type, t.sno) not in existing
+        ])
+
+
+def has_apaar_id(member):
+    """Faculty without an APAAR ID are not counted in any evaluation"""
+    return bool((member.apaar_id or '').strip())
+
+
 def init_checklist_items(college):
     QualifierChecklistItem.objects.filter(college=college).delete()
     tier1_texts = [
@@ -271,11 +295,13 @@ def recompute_all_qualifiers_for_college(college):
     """
     if not college:
         return
+    ensure_department_checklists(college)
 
     all_programs = QualifierProgram.objects.filter(college=college)
 
     for prog in all_programs:
-        members = prog.faculty_members.all()
+        # Faculty without an APAAR ID are not counted (they cannot be entered, and legacy rows are ignored)
+        members = [m for m in prog.faculty_members.all() if has_apaar_id(m)]
         hod_phd = False
         for m in members:
             desig = (m.present_designation or '').lower()
