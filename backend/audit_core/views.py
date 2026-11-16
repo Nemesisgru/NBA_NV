@@ -5,7 +5,7 @@ from html import escape as html_escape
 from django.conf import settings
 import csv
 import io
-from itertools import combinations
+from itertools import product
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db.models import Sum, Count, Q
@@ -1169,11 +1169,14 @@ def assignment_error(dept, cycle_id, a1, a2, exclude_department_id=None):
             return f"{label} ({auditor.name}) belongs to {dept.institute.code} and cannot audit a {dept.institute.code} department."
     if a1 and a2 and a1.id == a2.id:
         return 'Auditor 1 and Auditor 2 must be different people.'
-    for label, auditor in (('Auditor 1', a1), ('Auditor 2', a2)):
-        if auditor and auditor_discipline(auditor) and auditor_discipline(auditor) == discipline(dept.code):
-            return f"{label} ({auditor.name}) is from {auditor.dept_name} and cannot audit a {dept.code} department of any college."
-    if a1 and a2 and auditor_discipline(a1) and auditor_discipline(a1) == auditor_discipline(a2):
-        return f"Auditor 1 and Auditor 2 are both from {a1.dept_name}. Choose a second auditor from another department."
+    # The lead auditor is a subject expert: same department (discipline) as the audited department, other college
+    if a1 and auditor_discipline(a1) != discipline(dept.code):
+        return (f"Auditor 1 ({a1.name}) is from {a1.dept_name or 'no department'}. The lead auditor must be from the "
+                f"same department ({dept.code}) in another college.")
+    # The second auditor brings an outside view: a different department, also from another college
+    if a2 and auditor_discipline(a2) == discipline(dept.code):
+        return (f"Auditor 2 ({a2.name}) is from {a2.dept_name}. The second auditor must be from a department other "
+                f"than {dept.code}.")
 
     for label, auditor in (('Auditor 1', a1), ('Auditor 2', a2)):
         if not auditor:
@@ -1362,12 +1365,14 @@ def build_auto_allotment(cycle_id):
             for load in auditor_load.get(auditor.id, [])
         )
 
-    def can_audit(auditor, dept):
+    def can_audit(auditor, dept, slot):
         if not auditor.is_active:
             return False
         if auditor.institute_id == dept.institute_id:
             return False
-        if auditor_discipline(auditor) and auditor_discipline(auditor) == discipline(dept.code):
+        same_department = auditor_discipline(auditor) == discipline(dept.code)
+        # Auditor 1 (lead) from the same department; Auditor 2 from another department
+        if same_department != (slot == 'auditor_1'):
             return False
         loads = auditor_load.get(auditor.id, [])
         colleges = {load['institute_id'] for load in loads}
@@ -1376,8 +1381,8 @@ def build_auto_allotment(cycle_id):
     while remaining:
         options_by_department = []
         for dept, fixed_a1, fixed_a2 in remaining:
-            a1_options = [fixed_a1] if fixed_a1 else [aud for aud in active_auditors if can_audit(aud, dept)]
-            a2_options = [fixed_a2] if fixed_a2 else [aud for aud in active_auditors if can_audit(aud, dept)]
+            a1_options = [fixed_a1] if fixed_a1 else [aud for aud in active_auditors if can_audit(aud, dept, 'auditor_1')]
+            a2_options = [fixed_a2] if fixed_a2 else [aud for aud in active_auditors if can_audit(aud, dept, 'auditor_2')]
             pairs = []
             if fixed_a1 and fixed_a2:
                 potential_pairs = [(fixed_a1, fixed_a2)]
@@ -1386,13 +1391,10 @@ def build_auto_allotment(cycle_id):
             elif fixed_a2:
                 potential_pairs = [(candidate, fixed_a2) for candidate in a1_options]
             else:
-                potential_pairs = list(combinations(a1_options, 2))
+                potential_pairs = list(product(a1_options, a2_options))
             pairs = []
             for a1, a2 in potential_pairs:
-                if a1.id == a2.id or (
-                    auditor_discipline(a1) and
-                    auditor_discipline(a1) == auditor_discipline(a2)
-                ):
+                if a1.id == a2.id:
                     continue
                 reuse_count = prior_department_load(a1, dept) + prior_department_load(a2, dept)
                 pairs.append((a1, a2, reuse_count))
@@ -1426,6 +1428,12 @@ def build_auto_allotment(cycle_id):
         options_by_department.sort(key=lambda item: (item[0], item[1].institute.code, item[1].code))
         _, dept, fixed_a1, fixed_a2, pairs = options_by_department[0]
 
+        still_pending = [(d, f1) for d, f1, _ in remaining if d.id != dept.id]
+
+        def lead_demand(auditor):
+            """How many still-unfilled departments could use this auditor as their lead (Auditor 1)"""
+            return sum(1 for d, f1 in still_pending if not f1 and can_audit(auditor, d, 'auditor_1'))
+
         def pair_priority(pair):
             a1, a2 = pair
             used_by_institute = {}
@@ -1444,6 +1452,8 @@ def build_auto_allotment(cycle_id):
                 for institute_id, capacity in active_auditors_by_institute.items()
             )
             return (
+                # Keep scarce subject experts free to lead their own department elsewhere
+                lead_demand(a2),
                 a1.institute_id == a2.institute_id,
                 tuple(utilization),
                 len(auditor_load.get(a1.id, [])) + len(auditor_load.get(a2.id, [])),

@@ -158,18 +158,24 @@ export default function AdminAllocation({
   //  * not from the same department (discipline) in any college, e.g. no ECE auditor for ECE / ECE (VLSI)
   //  * Auditor 2 is not from Auditor 1's department (any college)
   //  * one department in each of at most two other colleges per audit cycle
-  const discipline = (code) => (code || '').split('(')[0].trim().toUpperCase();
+  // Same grouping as the server: ECE (VLSI) -> ECE, CSE (CS) -> CSE, AI&DS / AI&ML -> AI
+  const discipline = (code) => {
+    const value = (code || '').split('(')[0].trim().toUpperCase();
+    if (['AI', 'AI&DS', 'AI&ML'].includes(value)) return 'AI';
+    if (value.startsWith('CSE &')) return 'CSE';
+    return value;
+  };
   const auditorDept = (aud) => discipline(aud?.dept_name || aud?.dept);
   const auditorChoices = (row, slot) => {
     const current = row[slot]?.id;
     const partner = slot === 'auditor_1' ? row.auditor_2 : row.auditor_1;
-    const partnerDept = partner ? auditorDept(auditors.find(a => a.id === partner.id) || partner) : '';
+    const sameDept = (a) => auditorDept(a) === discipline(row.department_code);
     return auditors.filter(a => {
       if (a.id === current) return true;
+      // Auditor 1 (lead): same department, other college. Auditor 2: another department, other college.
       if (a.institute_code === row.institute_code ||
-          auditorDept(a) === discipline(row.department_code) ||
-          a.id === partner?.id ||
-          (partnerDept && auditorDept(a) === partnerDept)) return false;
+          (slot === 'auditor_1' ? !sameDept(a) : sameDept(a)) ||
+          a.id === partner?.id) return false;
       const assignedElsewhere = assignments.filter(assignment =>
         assignment.department_id !== row.department_id &&
         [assignment.auditor_1?.id, assignment.auditor_2?.id].includes(a.id));
@@ -182,13 +188,7 @@ export default function AdminAllocation({
   const handleAuditorChange = (deptId, auditorField, auditorObj) => {
     setAssignments(prev => prev.map(a => {
       if (a.department_id !== deptId) return a;
-      const next = { ...a, [auditorField]: auditorObj };
-      // A new Auditor 1 from the same department as Auditor 2 clears Auditor 2 (and vice versa)
-      const otherField = auditorField === 'auditor_1' ? 'auditor_2' : 'auditor_1';
-      if (auditorObj && next[otherField] && auditorDept(auditorObj) === auditorDept(auditors.find(x => x.id === next[otherField].id) || next[otherField])) {
-        next[otherField] = null;
-      }
-      return next;
+      return { ...a, [auditorField]: auditorObj };
     }));
   };
 
@@ -765,7 +765,7 @@ export default function AdminAllocation({
               ))}
             </div>
             <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-            Not offered: own college, matching department discipline, duplicate auditor pair, or another department in the same college. An auditor may cover one department in each of two other colleges. Edit saved auditor selections and confirm with the current Admin password.
+            Auditor 1 (lead) must be from the same department in another college; Auditor 2 from a different department in another college. Not offered: own college, the same person twice, or another department in the same college. An auditor may cover one department in each of two other colleges. Edit saved auditor selections and confirm with the current Admin password.
             </span>
           </div>
 
