@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+from decimal import Decimal, InvalidOperation
 from html import escape as html_escape
 from django.conf import settings
 import csv
@@ -57,6 +58,19 @@ def calculate_grade(percentage, settings):
         return 'W'
     else:
         return 'D'
+
+
+def parse_nonnegative_integer(value, field):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        number = Decimal(str(value).strip())
+    except InvalidOperation:
+        raise ValueError(f'{field} must be a non-negative integer.')
+    if not number.is_finite() or number < 0 or number != number.to_integral_value():
+        raise ValueError(f'{field} must be a non-negative integer.')
+    return int(number)
+
 
 def auth_login_view(request):
     """User login endpoint for Admin, Auditors, and HODs"""
@@ -514,14 +528,10 @@ def save_evaluation(request):
     is_flagged = data.get('is_flagged_for_atr', False)
 
     try:
-        items_checked = round(float(items_checked), 2) if items_checked is not None and str(items_checked) != '' else None
-    except:
-        items_checked = None
-
-    try:
-        valid_items = round(float(valid_items), 2) if valid_items is not None and str(valid_items) != '' else None
-    except:
-        valid_items = None
+        items_checked = parse_nonnegative_integer(items_checked, 'items_checked')
+        valid_items = parse_nonnegative_integer(valid_items, 'valid_items')
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
 
     validated_value = None
     marks_obtained = None

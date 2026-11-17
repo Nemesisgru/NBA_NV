@@ -17,13 +17,6 @@ const fmt2 = (v) => {
 // Roles that get the search / grade filter toolbar (administrative tool)
 const TOOLBAR_ROLES = ['Admin'];
 
-// Restrict typed numeric input to at most two decimal places
-const limit2 = (v) => {
-  const s = String(v);
-  const dot = s.indexOf('.');
-  return dot === -1 ? s : s.slice(0, dot + 3);
-};
-
 const resizeRemarks = (element) => {
   if (!element) return;
   element.style.height = 'auto';
@@ -154,11 +147,12 @@ export default function CriterionEvaluation({
   // Recalculate local metric values
   const handleInputChange = (metricId, field, value) => {
     if (readOnly) return;
+    if ((field === 'items_checked' || field === 'valid_items')
+      && value !== '' && !/^\d+$/.test(String(value))) return;
     setMetrics(prev => prev.map(m => {
       if (m.id !== metricId) return m;
 
       const evalData = { ...(m.evaluation || {}) };
-      if (field === 'items_checked' || field === 'valid_items') value = limit2(value);
       evalData[field] = value;
 
       const itemsChecked = parseFloat(evalData.items_checked);
@@ -710,10 +704,11 @@ export default function CriterionEvaluation({
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="1"
                             value={ev.items_checked !== null && ev.items_checked !== undefined ? ev.items_checked : ''}
                             onChange={(e) => handleInputChange(item.id, 'items_checked', e.target.value)}
                             disabled={readOnly}
+                            title="Enter a whole number"
                             style={{ 
                               width: '65px', 
                               textAlign: 'center', 
@@ -730,10 +725,11 @@ export default function CriterionEvaluation({
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="1"
                             value={ev.valid_items !== null && ev.valid_items !== undefined ? ev.valid_items : ''}
                             onChange={(e) => handleInputChange(item.id, 'valid_items', e.target.value)}
                             disabled={readOnly}
+                            title="Enter a whole number"
                             style={{ 
                               width: '65px', 
                               textAlign: 'center', 

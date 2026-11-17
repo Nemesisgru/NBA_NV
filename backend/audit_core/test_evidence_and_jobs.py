@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from audit_core.ai import analytics, intent, jobs, narration
 from audit_core.ai.scope import resolve_scope
-from audit_core.models import AIReport, AuditCycle, AuditSettings, EvidenceChunk, EvidenceFile
+from audit_core.models import AIReport, AuditCycle, AuditEvaluation, AuditSettings, EvidenceChunk, EvidenceFile
 from audit_core.test_ai_assistant import AI_TEST_SETTINGS, AIAssistantBase, FakeRequest
 
 TMP_EVIDENCE = tempfile.mkdtemp(prefix='evidence-test-')
@@ -145,6 +145,24 @@ class ConfigurationTests(AIAssistantBase):
         self.assertEqual(r.status_code, 200)
         snap = AuditCycle.objects.get(id=self.cur.id).rubric_snapshot
         self.assertEqual(snap['y_threshold'], 0.75)
+
+    def test_evaluation_counts_reject_fractional_values(self):
+        self.login(self.admin)
+        payload = {
+            'department_id': self.a2.id,
+            'cycle_id': self.cur.id,
+            'metric_id': self.m['1.1.a'].id,
+            'items_checked': 10,
+            'valid_items': 9,
+        }
+        for field in ('items_checked', 'valid_items'):
+            with self.subTest(field=field):
+                response = self.post('/api/evaluations/save/', {**payload, field: 1.5})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()['error'])
+        self.assertFalse(AuditEvaluation.objects.filter(
+            department=self.a2, cycle=self.cur, metric=self.m['1.1.a']
+        ).exists())
 
     def test_different_rubric_versions_are_not_compared(self):
         AuditCycle.objects.filter(id=self.cur.id).update(rubric_snapshot={'version': 2, 'y_threshold': 0.8, 'c_threshold': 0.6, 'w_threshold': 0.4})

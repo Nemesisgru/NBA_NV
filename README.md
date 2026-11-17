@@ -325,6 +325,11 @@ Keep Ollama on `127.0.0.1` (its default). The server refuses Ollama URLs that ar
 cd E:\NBA_NV\backend
 python manage.py test audit_core     # 54 tests, model mocked, synthetic data
 ```
+To create synthetic audit scores and ATRs for MECH in all three colleges, run:
+```powershell
+python manage.py seed_test_audit --department-code MECH --year 2026-2027 --semester Odd
+```
+This creates cross-college auditor assignments in the selected cycle and only rebuilds MECH data if run again.
 Then log in, open **AI Assistant**, choose an audit cycle and click a starter question. To check the model alone: `ollama run qwen3.5:9b "Say OK"`.
 
 **Comparing several departments or colleges**: the *College(s)* and *Department(s)* boxes on **AI Assistant** accept several choices (leave empty for all you may see). **Use Results Comparison selection** copies the departments picked on the Comparison page. Then ask e.g. *"Compare the selected departments in C4"* or *"Which college is best in C2?"*: the result ranks the departments, shows each criterion side by side with the highest, lowest and gap, and, when more than one college is selected, totals per college (selected departments only). HODs and Auditors can only pick departments they already have access to. Draft reports still cover exactly one department.

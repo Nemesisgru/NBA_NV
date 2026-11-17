@@ -11,10 +11,12 @@ Each department gets its own performance profile (overall level, a strong and a
 weak criterion) so departments can be compared, and its own ATR completion level
 so the ATR format filled by the HODs can be checked.
 
-Re-running the command wipes and rebuilds only the test cycle.
+Re-running the command rebuilds the test cycle. With --department-code, only
+matching departments in that cycle are replaced.
 
     python manage.py seed_test_audit
     python manage.py seed_test_audit --year 2025-2026 --semester Even --seed 7
+    python manage.py seed_test_audit --department-code MECH --year 2026-2027 --semester Odd
 """
 import random
 from datetime import date, timedelta
@@ -112,24 +114,31 @@ class Command(BaseCommand):
         parser.add_argument('--semester', default='Even', choices=['Odd', 'Even'])
         parser.add_argument('--cycle-type', default='End-Semester', choices=['Mid-Semester', 'End-Semester'])
         parser.add_argument('--seed', type=int, default=2026)
+        parser.add_argument('--department-code', default='', help='Only seed this department code across colleges')
 
     def handle(self, *args, **opts):
         rng = random.Random(opts['seed'])
-        departments = list(Department.objects.select_related('institute').order_by('institute__code', 'code'))
+        departments_query = Department.objects.select_related('institute').order_by('institute__code', 'code')
+        if opts['department_code'].strip():
+            departments_query = departments_query.filter(code__iexact=opts['department_code'].strip())
+        departments = list(departments_query)
         auditors = list(Auditor.objects.filter(is_active=True).select_related('institute'))
         if not departments or not auditors:
+            if opts['department_code'].strip() and not departments:
+                raise CommandError(f"No department found with code '{opts['department_code'].strip()}'.")
             raise CommandError('Departments and auditors must exist first (run seed_audit_data).')
 
         allocation = self.allocate(departments, auditors, rng)
+        department_ids = [dept.id for dept in departments]
 
         with transaction.atomic():
             cycle, _ = AuditCycle.objects.get_or_create(
                 academic_year=opts['year'], semester=opts['semester'], cycle_type=opts['cycle_type'],
                 defaults={'is_active': True},
             )
-            # Wipe only this cycle (ATRs cascade from evaluations)
-            AuditEvaluation.objects.filter(cycle=cycle).delete()
-            AuditAssignment.objects.filter(cycle=cycle).delete()
+            # Rebuild only selected departments; ATRs cascade from their evaluations.
+            AuditEvaluation.objects.filter(cycle=cycle, department_id__in=department_ids).delete()
+            AuditAssignment.objects.filter(cycle=cycle, department_id__in=department_ids).delete()
 
             settings = get_settings()
             metrics = list(MetricItem.objects.filter(is_header=False).select_related('criterion'))
