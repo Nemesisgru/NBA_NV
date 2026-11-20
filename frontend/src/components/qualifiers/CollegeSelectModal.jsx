@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Plus, ArrowRight, Check } from 'lucide-react';
+import { Building2, Plus, ArrowRight, Check, X } from 'lucide-react';
 
 export default function CollegeSelectModal({
   isOpen,
@@ -8,6 +8,7 @@ export default function CollegeSelectModal({
   onAccessCollege,
   onCreateCollege,
   onClose,
+  onBackToLogin,
 }) {
   const savedCollegeId = colleges.some((college) => String(college.id) === String(activeCollegeId))
     ? Number(activeCollegeId)
@@ -103,8 +104,34 @@ export default function CollegeSelectModal({
             padding: '24px 28px 16px',
             borderBottom: '1px solid var(--border-subtle)',
             background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%)',
+            position: 'relative',
           }}
         >
+          <button
+            type="button"
+            onClick={() => onBackToLogin?.()}
+            aria-label="Close and return to login"
+            title="Back to login"
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: '1px solid var(--border-subtle)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 1,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <X size={18} />
+          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{

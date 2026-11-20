@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { ShieldCheck, LogIn, Loader2, Eye, EyeOff, Sparkles, FileSpreadsheet, ArrowRight } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
-
 export default function LoginPage({ onLogin, onOpenQualifiers }) {
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -102,7 +101,6 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
           </button>
         </div>
 
-        {/* Theme Toggle switch */}
         <div
           style={{
             display: 'flex',
@@ -279,13 +277,9 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
               transition: 'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                Sign in
-              </h2>
-              {/* Secondary switch inside login card for immediate accessibility */}
-              <ThemeToggle id="login-card-theme-toggle" showLabel={false} size="sm" />
-            </div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Sign in
+            </h2>
 
             <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '22px' }}>
               Use the username or email and password issued by the IQAC office.
@@ -379,32 +373,6 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
                 {submitting ? 'Signing in...' : 'Sign in'}
               </button>
 
-              <div style={{ textAlign: 'center', margin: '4px 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                — or —
-              </div>
-
-              <button
-                type="button"
-                onClick={onOpenQualifiers}
-                style={{
-                  padding: '10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  color: '#10b981',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  fontWeight: 700,
-                  fontSize: '0.825rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  transition: 'background 0.2s ease'
-                }}
-              >
-                <FileSpreadsheet size={16} />
-                Enter Pre-Visit Qualifiers Data
-              </button>
             </form>
 
             <div
@@ -422,9 +390,6 @@ export default function LoginPage({ onLogin, onOpenQualifiers }) {
               }}
             >
               <span>Forgot password? Contact IQAC Admin</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                Mode: <strong style={{ color: 'var(--text-primary)' }}>Dark / Light</strong>
-              </span>
             </div>
           </section>
         </div>

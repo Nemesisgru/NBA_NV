@@ -608,6 +608,7 @@ export default function QualifierModule({ onBackToLogin }) {
           onAccessCollege={handleAccessCollege}
           onCreateCollege={handleCreateCollege}
           onClose={() => setCollegeModalOpen(false)}
+          onBackToLogin={onBackToLogin}
         />
       )}
     </div>
